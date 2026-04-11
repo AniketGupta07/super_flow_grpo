@@ -407,6 +407,187 @@ def unifiedreward_score_sglang(device):
     
     return _fn
 
+def preference_within_group_remote(device):
+    """Scores videos within a group against the first video as reference (via HTTP server)."""
+    import requests
+    from requests.adapters import HTTPAdapter, Retry
+    import pickle
+
+    url = "http://127.0.0.1:18087"
+    sess = requests.Session()
+    retries = Retry(total=1000, backoff_factor=1, status_forcelist=[500], allowed_methods=False)
+    sess.mount("http://", HTTPAdapter(max_retries=retries))
+
+    def _fn(images, prompts, metadata):
+        if isinstance(images, torch.Tensor):
+            if images.dim() == 5 and images.shape[2] == 3:
+                images = images.permute(0, 1, 3, 4, 2)
+            images = (images * 255).round().clamp(0, 255).to(torch.uint8).cpu().numpy()
+        data = {"videos": [vid for vid in images], "prompts": list(prompts)}
+        response = sess.post(url, data=pickle.dumps(data), timeout=300)
+        return pickle.loads(response.content)["outputs"], {}
+
+    return _fn
+
+def preference_cached_refs(device):
+    """Score generated videos against pre-computed base-model reference embeddings.
+
+    Pre-computed SBERT prompt embeddings and Qwen vision embeddings for reference
+    videos are loaded once at init.  Generated clips are written to a short-lived
+    MP4 (same fps as reference generation) and embedded with QwenVideoEmbedderA1
+    .embed_video_only, matching api_test/EMBEDDING_MODEL/embed_wan_ref_grpo_videos.py.
+    """
+    import sys, os, json, tempfile
+
+    import imageio
+
+    _api_test = os.path.abspath("/simurgh/group/super_video/api_test")
+    for _p in (os.path.join(_api_test, "EMBEDDING_MODEL"), os.path.join(_api_test, "scripts")):
+        if _p not in sys.path:
+            sys.path.insert(0, _p)
+
+    from train_prompt_pair_mlp import PairMLP
+    from vision_only_encoder import FPS as _QWEN_REF_EMBED_FPS, NORMALIZE as _QWEN_REF_NORMALIZE
+    from vision_only_encoder import QwenVideoEmbedderA1
+
+    emb_dir = "/simurgh2/projects/super_video/flow_grpo/data/video_encodings"
+    prompt_file = "/simurgh/group/super_video/flow_grpo/data/extended_prompts.txt"
+    sbert_file = "/simurgh2/projects/super_video/flow_grpo/data/EXTENDED_SBERT_PROMPT_EMBEDDINGS.json"
+
+    with open(prompt_file) as f:
+        prompt_lines = [l.strip() for l in f]
+    prompt_to_idx = {}
+    for i, text in enumerate(prompt_lines):
+        if text not in prompt_to_idx:
+            prompt_to_idx[text] = i + 1
+
+    with open(sbert_file) as f:
+        sbert_data = json.load(f)
+    prompt_embs = {e["index"]: torch.tensor(e["prompt_embed"], dtype=torch.float32)
+                   for e in sbert_data}
+
+    ref_vision_embs = {}
+    for fname in sorted(os.listdir(emb_dir)):
+        if fname.startswith("wan_ref_vision_embeddings") and fname.endswith(".json"):
+            with open(os.path.join(emb_dir, fname)) as f:
+                for entry in json.load(f):
+                    ref_vision_embs[entry["index"]] = torch.tensor(entry["v1"], dtype=torch.float32)
+
+    print(f"[preference_cached_refs] {len(prompt_embs)} prompt embs, "
+          f"{len(ref_vision_embs)} ref vision embs, "
+          f"{len(prompt_to_idx)} prompt->idx mappings")
+
+    model_dir = os.path.join(_api_test, "EMBEDDING_MODEL", "models-prompt-both")
+    with open(os.path.join(model_dir, "config.json")) as f:
+        cfg = json.load(f)
+    pair_model = PairMLP(cfg["input_dim"], cfg["hidden_dims"], cfg.get("dropout", 0.35))
+    pair_model.load_state_dict(
+        torch.load(os.path.join(model_dir, "best.pth"), map_location="cpu", weights_only=True)
+    )
+    pair_model = pair_model.to(device).eval()
+
+    # Same path as api_test/EMBEDDING_MODEL/embed_wan_ref_grpo_videos.py: QwenVideoEmbedderA1.embed_video_only.
+    # MP4 frame rate matches generate_wan_flow_grpo_reference_videos / train_wan2_1 logging; Qwen sampling fps matches vision_only_encoder.FPS.
+    _WAN_REF_MP4_FPS = 8
+    embedder = QwenVideoEmbedderA1(device=str(device))
+
+    @torch.no_grad()
+    def _fn(images, prompts, metadata):
+        if isinstance(images, torch.Tensor):
+            if images.dim() == 5 and images.shape[2] == 3:
+                images = images.permute(0, 1, 3, 4, 2)
+            images = (images * 255).round().clamp(0, 255).to(torch.uint8).cpu().numpy()
+
+        scores = []
+        for i in range(len(images)):
+            idx = prompt_to_idx.get(prompts[i])
+            if idx is None or idx not in ref_vision_embs or idx not in prompt_embs:
+                scores.append(0.5)
+                continue
+            tmp_path = None
+            try:
+                with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tf:
+                    tmp_path = tf.name
+                imageio.mimsave(
+                    tmp_path,
+                    list(images[i]),
+                    fps=_WAN_REF_MP4_FPS,
+                    codec="libx264",
+                    format="FFMPEG",
+                )
+                gen_emb = embedder.embed_video_only(
+                    video_path=tmp_path,
+                    fps=_QWEN_REF_EMBED_FPS,
+                    normalize=_QWEN_REF_NORMALIZE,
+                ).cpu()
+            finally:
+                if tmp_path is not None:
+                    try:
+                        os.unlink(tmp_path)
+                    except OSError:
+                        pass
+            features = torch.cat([gen_emb, ref_vision_embs[idx], prompt_embs[idx]]
+                                 ).unsqueeze(0).to(device)
+            scores.append(pair_model(features).item())
+        return scores, {}
+
+    return _fn
+
+
+def preference_within_group_local(device):
+    """Scores videos within a group against the first video as reference (in-process).
+
+    Qwen2.5-VL-7B runs on CPU so it does not contend with the Wan pipeline on the
+    training GPU. Only the small PairMLP and a single feature vector batch use GPU.
+    """
+    import sys, os, json
+
+    _api_test = os.path.abspath("/simurgh/group/super_video/api_test")
+    for _p in (os.path.join(_api_test, "EMBEDDING_MODEL"), os.path.join(_api_test, "scripts")):
+        if _p not in sys.path:
+            sys.path.insert(0, _p)
+
+    from vision_only_encoder import QwenVideoEmbedderA1
+    from prompt_encoder import SbertPromptEmbedder
+    from train_prompt_pair_mlp import PairMLP
+
+    model_dir = os.path.join(_api_test, "EMBEDDING_MODEL", "models-prompt-both")
+    with open(os.path.join(model_dir, "config.json")) as f:
+        cfg = json.load(f)
+
+    vision_embedder = QwenVideoEmbedderA1(force_cpu=True)
+    sbert_embedder = SbertPromptEmbedder(device="cpu")
+    pair_model = PairMLP(cfg["input_dim"], cfg["hidden_dims"], cfg.get("dropout", 0.3)).to(device)
+    pair_model.load_state_dict(
+        torch.load(os.path.join(model_dir, "best.pth"), map_location=device, weights_only=True)
+    )
+    pair_model.eval()
+
+    @torch.no_grad()
+    def _fn(images, prompts, metadata):
+        if isinstance(images, torch.Tensor):
+            if images.dim() == 5 and images.shape[2] == 3:
+                images = images.permute(0, 1, 3, 4, 2)
+            images = (images * 255).round().clamp(0, 255).to(torch.uint8).cpu().numpy()
+
+        prompt = prompts[0]
+        prompt_emb = sbert_embedder.embed_prompts([prompt]).float().view(-1)
+
+        ref_frames = [Image.fromarray(f) for f in images[0]]
+        ref_emb = vision_embedder.embed_video_frames_only(ref_frames, fps=4).float().view(-1)
+
+        scores = [0.5]
+        for vid_np in images[1:]:
+            cand_frames = [Image.fromarray(f) for f in vid_np]
+            cand_emb = vision_embedder.embed_video_frames_only(cand_frames, fps=4).float().view(-1)
+            features = torch.cat([cand_emb, ref_emb, prompt_emb], dim=0).unsqueeze(0).to(
+                device, dtype=pair_model.network[0].weight.dtype
+            )
+            scores.append(pair_model(features).item())
+        return scores, {}
+
+    return _fn
+
 def multi_score(device, score_dict):
     score_functions = {
         "deqa": deqa_score_remote,
@@ -421,6 +602,9 @@ def multi_score(device, score_dict):
         "geneval": geneval_score,
         "clipscore": clip_score,
         "image_similarity": image_similarity_score,
+        "preference_within_group": preference_within_group_remote,
+        "preference_within_group_local": preference_within_group_local,
+        "preference_cached_refs": preference_cached_refs,
     }
     score_fns={}
     for score_name, weight in score_dict.items():

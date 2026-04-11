@@ -9,10 +9,12 @@ setup(
         "torch==2.6.0",
         "torchvision==0.21.0",
         "torchaudio",
-        "transformers==4.40.0",
+        # "transformers==4.40.0",
+        "transformers==4.53.0",
         "accelerate==1.4.0",
         "diffusers==0.33.1", 
         
+        # "flash-attn==2.7.4.post1",
         "numpy==1.26.4",
         "pandas==2.2.3",
         "scipy==1.15.2",
@@ -29,7 +31,6 @@ setup(
         "requests==2.32.3",
         "matplotlib==3.10.0",
         
-        # "flash-attn==2.7.4.post1",
         "deepspeed==0.16.4",  
         "peft==0.10.0",       
         "bitsandbytes==0.45.3",
@@ -38,9 +39,11 @@ setup(
         "fastapi==0.115.11", 
         "uvicorn==0.34.0",
         
-        "huggingface-hub==0.29.1",  
+        # "huggingface-hub==0.29.1",
+        "huggingface-hub>=0.30.0,<1.0",  
         "datasets==3.3.2",
-        "tokenizers==0.19.1",
+        # "tokenizers==0.19.1",
+        "tokenizers==0.21.0",
         
         "einops==0.8.1",
         "nvidia-ml-py==12.570.86",
@@ -49,8 +52,20 @@ setup(
         "ml_collections",
         "sentencepiece",
         "openai",
+        "sentence-transformers",
+        "qwen-vl-utils",
+        "torchcodec",
+        "imageio",
+        "easydict",
+        "ftfy",
+        "dashscope",
+        "imageio-ffmpeg",
+        "gradio>=5.0.0",
     ],
+    # flash-attn's setup imports torch; pip's isolated build env has no torch.
+    # Install: pip install -e ".[flash]" --no-build-isolation  (torch must be in env first)
     extras_require={
+        "flash": ["flash-attn==2.7.4.post1"],
         "dev": [
             "ipython==8.34.0",
             "black==24.2.0",

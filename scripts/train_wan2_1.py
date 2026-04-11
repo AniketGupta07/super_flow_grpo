@@ -101,22 +101,18 @@ class DistributedKRepeatSampler(Sampler):
             # print('epoch', self.epoch)
             # 随机选择m个不同的样本
             indices = torch.randperm(len(self.dataset), generator=g)[:self.m].tolist()
-            # print(self.rank, 'indices', indices)
-            # 每个样本重复k次，生成总样本数n*b
-            repeated_indices = [idx for idx in indices for _ in range(self.k)]
-            
-            # 打乱顺序确保均匀分配
-            shuffled_indices = torch.randperm(len(repeated_indices), generator=g).tolist()
-            shuffled_samples = [repeated_indices[i] for i in shuffled_indices]
-            # print(self.rank, 'shuffled_samples', shuffled_samples)
-            # 将样本分割到各个卡
+
+            # Shuffle the order of *groups* (not individual samples) then
+            # assign whole groups to GPUs so all k copies of a prompt stay
+            # on the same card -- required by within-group preference scoring.
+            group_order = torch.randperm(self.m, generator=g).tolist()
+            groups_per_card = self.batch_size // self.k
             per_card_samples = []
             for i in range(self.num_replicas):
-                start = i * self.batch_size
-                end = start + self.batch_size
-                per_card_samples.append(shuffled_samples[start:end])
-            # print(self.rank, 'per_card_samples', per_card_samples[self.rank])
-            # 返回当前卡的样本索引
+                card_groups = group_order[i * groups_per_card : (i + 1) * groups_per_card]
+                per_card_samples.append(
+                    [indices[g_idx] for g_idx in card_groups for _ in range(self.k)]
+                )
             yield per_card_samples[self.rank]
     
     def set_epoch(self, epoch):
@@ -391,7 +387,7 @@ def main(_):
         gradient_accumulation_steps=gradient_accumulation_steps,
     )
 
-    wandb_project_name = "wan_flow_grpo"
+    wandb_project_name = "super-video"
     if accelerator.is_main_process:
         accelerator.init_trackers(
             project_name=wandb_project_name,
@@ -799,6 +795,10 @@ def main(_):
             },
             step=global_step,
         )
+        if accelerator.is_local_main_process:
+            reward_strs = " | ".join(f"{k}: {v.mean():.4f} (std {v.std():.4f})"
+                                     for k, v in gathered_rewards.items())
+            print(f"[Epoch {epoch}] Rewards: {reward_strs}")
 
         # per-prompt mean/std tracking
         if config.per_prompt_stat_tracking:
@@ -1005,7 +1005,12 @@ def main(_):
                     ema.step(transformer_trainable_parameters, global_step)
             # make sure we did an optimization step at the end of the inner epoch
             # assert accelerator.sync_gradients
-        
+
+    # Final checkpoint
+    if accelerator.is_main_process:
+        save_ckpt(config.save_dir, transformer, global_step, accelerator, ema, transformer_trainable_parameters, config)
+        logger.info(f"Saved final checkpoint at global_step {global_step}")
+
 if __name__ == "__main__":
     app.run(main)
 

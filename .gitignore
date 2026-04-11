@@ -309,3 +309,4 @@ tags
 wandb/
 logs/
 notebooks/
+hf_cache/

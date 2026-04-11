@@ -1015,5 +1015,62 @@ def pickscore_bagel_lora():
     return config
 
 
+def preference_wan2_1():
+    config = compressibility()
+    config.dataset = os.path.join(os.getcwd(), "dataset/preference")
+
+    config.pretrained.model = "hf_cache/Wan2.1-T2V-1.3B-Diffusers"
+    config.sample.num_steps = 20
+    config.sample.eval_num_steps = 50
+    config.sample.guidance_scale = 4.5
+    config.run_name = "wan_flow_grpo_preference"
+
+    config.height = 240
+    config.width = 416
+    config.frames = 33
+    config.sample.train_batch_size = 4
+    config.sample.num_image_per_prompt = 8
+    config.sample.num_batches_per_epoch = 2
+    config.sample.sample_time_per_prompt = 5
+    config.sample.test_batch_size = 2
+
+    config.train.batch_size = config.sample.train_batch_size
+    config.train.gradient_accumulation_steps = config.sample.num_batches_per_epoch * config.sample.sample_time_per_prompt // 2 if (config.sample.num_batches_per_epoch * config.sample.sample_time_per_prompt) > 1 else 1
+    config.train.num_inner_epochs = 1
+    config.train.timestep_fraction = 0.99
+    config.train.beta = 0.004
+    config.train.learning_rate = 1e-4
+    config.train.clip_range = 1e-3
+    config.sample.kl_reward = 0
+    config.train.sft = 0.0
+    config.train.sft_batch_size = 3
+    config.sample.global_std = False
+    config.train.ema = True
+    config.mixed_precision = "bf16"
+    config.diffusion_loss = True
+    config.num_epochs = 100000
+    config.save_freq = 60
+    config.eval_freq = 30
+    config.save_dir = f'logs/video_preference/{config.run_name}'
+    config.resume_from = None
+    config.reward_fn = {
+        "preference_cached_refs": 1.0,
+    }
+    config.prompt_fn = "general_ocr"
+    config.per_prompt_stat_tracking = True
+    return config
+
+
+def preference_wan2_1_test():
+    """Fewer batches for quick interactive testing."""
+    config = preference_wan2_1()
+    config.run_name = "wan_flow_grpo_preference_test"
+    config.save_dir = f'logs/video_preference/{config.run_name}'
+    config.num_epochs = 10
+    config.save_freq = 5
+    config.eval_freq = 5
+    return config
+
+
 def get_config(name):
     return globals()[name]()
