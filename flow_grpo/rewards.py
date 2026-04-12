@@ -446,9 +446,9 @@ def preference_cached_refs(device):
         if _p not in sys.path:
             sys.path.insert(0, _p)
 
-    from train_prompt_pair_mlp import PairMLP
-    from vision_only_encoder import FPS as _QWEN_REF_EMBED_FPS, NORMALIZE as _QWEN_REF_NORMALIZE
-    from vision_only_encoder import QwenVideoEmbedderA1
+    # from train_prompt_pair_mlp import PairMLP
+    # from vision_only_encoder import FPS as _QWEN_REF_EMBED_FPS, NORMALIZE as _QWEN_REF_NORMALIZE
+    # from vision_only_encoder import QwenVideoEmbedderA1
 
     emb_dir = "/simurgh2/projects/super_video/flow_grpo/data/video_encodings"
     prompt_file = "/simurgh/group/super_video/flow_grpo/data/extended_prompts.txt"
@@ -477,7 +477,7 @@ def preference_cached_refs(device):
           f"{len(ref_vision_embs)} ref vision embs, "
           f"{len(prompt_to_idx)} prompt->idx mappings")
 
-    model_dir = os.path.join(_api_test, "EMBEDDING_MODEL", "models-prompt-both")
+    model_dir = "dummy"
     with open(os.path.join(model_dir, "config.json")) as f:
         cfg = json.load(f)
     pair_model = PairMLP(cfg["input_dim"], cfg["hidden_dims"], cfg.get("dropout", 0.35))
