@@ -446,9 +446,9 @@ def preference_cached_refs(device):
         if _p not in sys.path:
             sys.path.insert(0, _p)
 
-    # from train_prompt_pair_mlp import PairMLP
-    # from vision_only_encoder import FPS as _QWEN_REF_EMBED_FPS, NORMALIZE as _QWEN_REF_NORMALIZE
-    # from vision_only_encoder import QwenVideoEmbedderA1
+    from train_prompt_pair_mlp import PairMLP
+    from vision_only_encoder import FPS as _QWEN_REF_EMBED_FPS, NORMALIZE as _QWEN_REF_NORMALIZE
+    from vision_only_encoder import QwenVideoEmbedderA1
 
     emb_dir = "/simurgh2/projects/super_video/flow_grpo/data/video_encodings"
     prompt_file = "/simurgh/group/super_video/flow_grpo/data/extended_prompts.txt"
