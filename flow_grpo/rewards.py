@@ -504,13 +504,18 @@ def preference_cached_refs(device):
             if idx is None or idx not in ref_vision_embs or idx not in prompt_embs:
                 scores.append(0.5)
                 continue
+            frames = list(images[i])
+            if len(frames) == 0:
+                # Keep training robust if a sample unexpectedly has no frames.
+                scores.append(0.5)
+                continue
             tmp_path = None
             try:
                 with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tf:
                     tmp_path = tf.name
                 imageio.mimsave(
                     tmp_path,
-                    list(images[i]),
+                    frames,
                     fps=_WAN_REF_MP4_FPS,
                     codec="libx264",
                     format="FFMPEG",
@@ -520,6 +525,10 @@ def preference_cached_refs(device):
                     fps=_QWEN_REF_EMBED_FPS,
                     normalize=_QWEN_REF_NORMALIZE,
                 ).cpu()
+            except Exception as exc:
+                print(f"[preference_cached_refs] embedding fallback for sample {i}: {exc}")
+                scores.append(0.5)
+                continue
             finally:
                 if tmp_path is not None:
                     try:
