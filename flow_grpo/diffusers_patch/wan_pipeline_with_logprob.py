@@ -360,7 +360,19 @@ def wan_pipeline_with_logprob(
             latents.device, latents.dtype
         )
         latents = latents / latents_std + latents_mean
-        video = self.vae.decode(latents, return_dict=False)[0]
+        # Decode in micro-batches to avoid VAE peak-memory OOM on large per-rank batches.
+        decoded_chunks = []
+        decode_bs = 1
+        for start in range(0, latents.shape[0], decode_bs):
+            chunk = latents[start : start + decode_bs]
+            try:
+                decoded = self.vae.decode(chunk, return_dict=False)[0]
+            except torch.OutOfMemoryError:
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                decoded = self.vae.decode(chunk, return_dict=False)[0]
+            decoded_chunks.append(decoded)
+        video = torch.cat(decoded_chunks, dim=0)
         video = self.video_processor.postprocess_video(video, output_type=output_type)
     else:
         video = latents

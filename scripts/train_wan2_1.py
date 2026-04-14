@@ -2,6 +2,7 @@ from collections import defaultdict
 import contextlib
 import os
 import datetime
+import traceback
 from concurrent import futures
 import time
 import json
@@ -33,6 +34,7 @@ import random
 from torch.utils.data import Dataset, DataLoader, Sampler
 from flow_grpo.ema import EMAModuleWrapper
 import imageio
+from torch.distributed.elastic.multiprocessing.errors import record
 tqdm = partial(tqdm.tqdm, dynamic_ncols=True)
 
 
@@ -341,6 +343,7 @@ def save_ckpt(save_dir, transformer, global_step, accelerator, ema, transformer_
         if config.train.ema:
             ema.copy_temp_to(transformer_trainable_parameters)
 
+@record
 def main(_):
     # basic Accelerate and logging setup
     config = FLAGS.config
@@ -1012,6 +1015,11 @@ def main(_):
         logger.info(f"Saved final checkpoint at global_step {global_step}")
 
 if __name__ == "__main__":
-    app.run(main)
+    try:
+        app.run(main)
+    except Exception:
+        # Ensure we always emit the underlying Python traceback in stderr.
+        traceback.print_exc()
+        raise
 
 
