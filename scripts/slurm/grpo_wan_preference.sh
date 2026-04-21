@@ -18,9 +18,40 @@ FLOW_GRPO_ROOT="${FLOW_GRPO_ROOT:-/simurgh/group/super_video/flow_grpo}"
 CONFIG="${CONFIG:-config/grpo.py:preference_wan2_1}"
 NUM_GPUS="${NUM_GPUS:-4}"
 MAIN_PROCESS_PORT="${MAIN_PROCESS_PORT:-29501}"
+MODEL_TYPE="${MODEL_TYPE:-both}"
+USE_REPHRASED="${USE_REPHRASED:-0}"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --model-type)
+      if [[ -z "${2:-}" ]]; then
+        echo "Missing value for --model-type (expected: social|both)"
+        exit 1
+      fi
+      MODEL_TYPE="$2"
+      shift 2
+      ;;
+    --rephrased)
+      USE_REPHRASED=1
+      shift
+      ;;
+    *)
+      echo "Unknown argument: $1"
+      echo "Usage: sbatch $0 [--model-type social|both] [--rephrased]"
+      exit 1
+      ;;
+  esac
+done
+
+if [[ "$MODEL_TYPE" != "social" && "$MODEL_TYPE" != "both" ]]; then
+  echo "Invalid MODEL_TYPE='$MODEL_TYPE'. Expected one of: social, both"
+  exit 1
+fi
 
 echo "Job $SLURM_JOB_ID | GPUs $NUM_GPUS | $(date)"
 echo "Config: $CONFIG"
+echo "MODEL_TYPE: $MODEL_TYPE"
+echo "USE_REPHRASED: $USE_REPHRASED"
 
 mkdir -p /simurgh/group/super_video/api_test/logs
 
@@ -34,6 +65,8 @@ accelerate launch \
   --num_processes="$NUM_GPUS" \
   --main_process_port "$MAIN_PROCESS_PORT" \
   scripts/train_wan2_1.py \
-  --config "$CONFIG"
+  --config "$CONFIG" \
+  --model_type "$MODEL_TYPE" \
+  --rephrased_only "$USE_REPHRASED"
 
 echo "Done $(date)"

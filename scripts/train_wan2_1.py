@@ -40,6 +40,17 @@ tqdm = partial(tqdm.tqdm, dynamic_ncols=True)
 
 FLAGS = flags.FLAGS
 config_flags.DEFINE_config_file("config", "config/base.py", "Training configuration.")
+flags.DEFINE_enum(
+    "model_type",
+    "both",
+    ["social", "both"],
+    "Preference model type for reward model selection.",
+)
+flags.DEFINE_integer(
+    "rephrased_only",
+    0,
+    "If 1, train on rephrased prompts only (extended_prompts minus prompts).",
+)
 
 logger = get_logger(__name__)
 
@@ -48,6 +59,29 @@ class TextPromptDataset(Dataset):
         self.file_path = os.path.join(dataset, f'{split}.txt')
         with open(self.file_path, 'r') as f:
             self.prompts = [line.strip() for line in f.readlines()]
+        self.prompts = [p for p in self.prompts if p]
+
+        # Optional mode for preference training: use only rephrased prompts,
+        # i.e. prompts in extended_prompts.txt that are not in prompts.txt.
+        rephrased_only = bool(FLAGS.rephrased_only)
+        if rephrased_only and split == "train":
+            repo_root = os.getcwd()
+            extended_path = os.path.join(repo_root, "data", "extended_prompts.txt")
+            base_path = os.path.join(repo_root, "data", "prompts.txt")
+            if not os.path.isfile(extended_path) or not os.path.isfile(base_path):
+                raise FileNotFoundError(
+                    "FLOW_GRPO_REPHRASED_ONLY is enabled, but required files are missing: "
+                    f"{extended_path}, {base_path}"
+                )
+            with open(base_path, "r") as f:
+                base_prompts = {line.strip() for line in f if line.strip()}
+            with open(extended_path, "r") as f:
+                self.prompts = [line.strip() for line in f if line.strip() and line.strip() not in base_prompts]
+            if len(self.prompts) == 0:
+                raise ValueError(
+                    "FLOW_GRPO_REPHRASED_ONLY produced an empty train prompt set from "
+                    "data/extended_prompts.txt minus data/prompts.txt"
+                )
         
     def __len__(self):
         return len(self.prompts)
@@ -347,6 +381,7 @@ def save_ckpt(save_dir, transformer, global_step, accelerator, ema, transformer_
 def main(_):
     # basic Accelerate and logging setup
     config = FLAGS.config
+    flow_grpo.rewards.set_preference_model_type(FLAGS.model_type)
 
     unique_id = datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S")
     if not config.run_name:

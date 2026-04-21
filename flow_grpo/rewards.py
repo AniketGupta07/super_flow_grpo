@@ -4,6 +4,18 @@ import numpy as np
 import torch
 from collections import defaultdict
 
+_PREFERENCE_MODEL_TYPE = "both"
+
+
+def set_preference_model_type(model_type):
+    global _PREFERENCE_MODEL_TYPE
+    normalized = str(model_type).strip().lower()
+    if normalized not in {"social", "both"}:
+        raise ValueError(
+            f"Invalid model_type={model_type!r}. Expected one of: social, both"
+        )
+    _PREFERENCE_MODEL_TYPE = normalized
+
 def jpeg_incompressibility():
     def _fn(images, prompts, metadata):
         if isinstance(images, torch.Tensor):
@@ -560,7 +572,8 @@ def preference_within_group_local(device):
     from prompt_encoder import SbertPromptEmbedder
     from train_prompt_pair_mlp import PairMLP
 
-    model_dir = os.path.join(_api_test, "EMBEDDING_MODEL", "models-prompt-both")
+    model_type = _PREFERENCE_MODEL_TYPE
+    model_dir = os.path.join(_api_test, "EMBEDDING_MODEL", f"models-prompt-{model_type}")
     with open(os.path.join(model_dir, "config.json")) as f:
         cfg = json.load(f)
 
