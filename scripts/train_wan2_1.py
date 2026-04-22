@@ -51,6 +51,11 @@ flags.DEFINE_integer(
     0,
     "If 1, train on rephrased prompts only (extended_prompts minus prompts).",
 )
+flags.DEFINE_string(
+    "out_dir",
+    "",
+    "Optional checkpoint output directory. If set, checkpoints are saved as out_dir/checkpoint-<global_step>/lora.",
+)
 
 logger = get_logger(__name__)
 
@@ -367,7 +372,10 @@ def unwrap_model(model, accelerator):
     return model
 
 def save_ckpt(save_dir, transformer, global_step, accelerator, ema, transformer_trainable_parameters, config):
-    save_root = os.path.join(save_dir, "checkpoints", f"checkpoint-{global_step}")
+    if FLAGS.out_dir:
+        save_root = os.path.join(FLAGS.out_dir, f"checkpoint-{global_step}")
+    else:
+        save_root = os.path.join(save_dir, "checkpoints", f"checkpoint-{global_step}")
     save_root_lora = os.path.join(save_root, "lora")
     os.makedirs(save_root_lora, exist_ok=True)
     if accelerator.is_main_process:
