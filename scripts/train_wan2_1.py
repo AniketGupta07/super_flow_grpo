@@ -43,7 +43,7 @@ config_flags.DEFINE_config_file("config", "config/base.py", "Training configurat
 flags.DEFINE_enum(
     "model_type",
     "both",
-    ["social", "both"],
+    ["social", "both", "aa"],
     "Preference model type for reward model selection.",
 )
 flags.DEFINE_integer(

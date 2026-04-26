@@ -26,7 +26,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --model-type)
       if [[ -z "${2:-}" ]]; then
-        echo "Missing value for --model-type (expected: social|both)"
+        echo "Missing value for --model-type (expected: social|both|aa)"
         exit 1
       fi
       MODEL_TYPE="$2"
@@ -46,14 +46,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     *)
       echo "Unknown argument: $1"
-      echo "Usage: sbatch $0 [--model-type social|both] [--rephrased] [--out-dir /path/to/output]"
+      echo "Usage: sbatch $0 [--model-type social|both|aa] [--rephrased] [--out-dir /path/to/output]"
       exit 1
       ;;
   esac
 done
 
-if [[ "$MODEL_TYPE" != "social" && "$MODEL_TYPE" != "both" ]]; then
-  echo "Invalid MODEL_TYPE='$MODEL_TYPE'. Expected one of: social, both"
+if [[ "$MODEL_TYPE" != "social" && "$MODEL_TYPE" != "both" && "$MODEL_TYPE" != "aa" ]]; then
+  echo "Invalid MODEL_TYPE='$MODEL_TYPE'. Expected one of: social, both, aa"
   exit 1
 fi
 

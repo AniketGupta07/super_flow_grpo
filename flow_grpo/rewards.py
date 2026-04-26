@@ -10,9 +10,9 @@ _PREFERENCE_MODEL_TYPE = "both"
 def set_preference_model_type(model_type):
     global _PREFERENCE_MODEL_TYPE
     normalized = str(model_type).strip().lower()
-    if normalized not in {"social", "both"}:
+    if normalized not in {"social", "both", "aa"}:
         raise ValueError(
-            f"Invalid model_type={model_type!r}. Expected one of: social, both"
+            f"Invalid model_type={model_type!r}. Expected one of: social, both, aa"
         )
     _PREFERENCE_MODEL_TYPE = normalized
 
