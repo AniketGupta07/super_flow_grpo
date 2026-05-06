@@ -1,0 +1,19 @@
+{
+  "dataset": "aa",
+  "split_source": "streaming_model",
+  "input_dim": 7552,
+  "hidden_dims": [
+    8192,
+    4096,
+    2048,
+    1024,
+    512,
+    256,
+    64,
+    4
+  ],
+  "dropout": 0.35,
+  "vision_dim": 3584,
+  "prompt_dim": 384,
+  "aa_pair_loss_weight_train": 1.0
+}

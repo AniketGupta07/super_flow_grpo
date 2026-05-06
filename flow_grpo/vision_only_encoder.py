@@ -200,19 +200,6 @@ class QwenVideoEmbedderA1:
                 {
                     "type": "video",
                     "video": frames,
-                    "sample_fps": fps,
-                },
-                {"type": "text", "text": " "},
-            ],
-        }]
-
-        pooled = self._embed_common(messages)
-
-        if normalize:
-            pooled = torch.nn.functional.normalize(pooled, dim=0)
-
-        return pooled
-
 
 def main():
     embedder = QwenVideoEmbedderA1()
@@ -257,3 +244,16 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+                    "sample_fps": fps,
+                },
+                {"type": "text", "text": " "},
+            ],
+        }]
+
+        pooled = self._embed_common(messages)
+
+        if normalize:
+            pooled = torch.nn.functional.normalize(pooled, dim=0)
+
+        return pooled

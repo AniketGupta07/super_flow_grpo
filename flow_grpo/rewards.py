@@ -447,24 +447,50 @@ def preference_cached_refs(device):
     Pre-computed SBERT prompt embeddings and Qwen vision embeddings for reference
     videos are loaded once at init.  Generated clips are written to a short-lived
     MP4 (same fps as reference generation) and embedded with QwenVideoEmbedderA1
-    .embed_video_only, matching api_test/EMBEDDING_MODEL/embed_wan_ref_grpo_videos.py.
+    .embed_video_only, matching VPS_reward/embed_wan_ref_grpo_videos.py.
+
+    Environment variables (all required):
+        VPS_DATA_ROOT: Root directory containing embeddings and prompts
+            - <VPS_DATA_ROOT>/extended_prompts.txt
+            - <VPS_DATA_ROOT>/SBERT_PROMPT_EMBEDDINGS.json
+            - <VPS_DATA_ROOT>/video_encodings/wan_ref_vision_embeddings*.json
+        VPS_MODEL_DIR: Directory containing PairMLP model (best.pth, config.json)
+            Download from: huggingface.co/datasets/supervideoVPS/super_video (VPS_models/both)
     """
     import sys, os, json, tempfile
 
     import imageio
 
-    _api_test = os.path.abspath("/simurgh/group/super_video/api_test")
-    for _p in (os.path.join(_api_test, "EMBEDDING_MODEL"), os.path.join(_api_test, "scripts")):
-        if _p not in sys.path:
-            sys.path.insert(0, _p)
+    # Add VPS_reward to path for imports
+    _flow_grpo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    _vps_reward_dir = os.path.join(_flow_grpo_root, "VPS_reward")
+    if _vps_reward_dir not in sys.path:
+        sys.path.insert(0, _vps_reward_dir)
 
     from train_prompt_pair_mlp import PairMLP
     from vision_only_encoder import FPS as _QWEN_REF_EMBED_FPS, NORMALIZE as _QWEN_REF_NORMALIZE
     from vision_only_encoder import QwenVideoEmbedderA1
 
-    emb_dir = "/simurgh2/projects/super_video/flow_grpo/data/video_encodings"
-    prompt_file = "/simurgh/group/super_video/flow_grpo/data/extended_prompts.txt"
-    sbert_file = "/simurgh2/projects/super_video/flow_grpo/data/EXTENDED_SBERT_PROMPT_EMBEDDINGS.json"
+    # Load paths from environment variables
+    vps_data_root = os.environ.get("VPS_DATA_ROOT")
+    vps_model_dir = os.environ.get("VPS_MODEL_DIR")
+
+    if not vps_data_root:
+        raise ValueError(
+            "VPS_DATA_ROOT environment variable not set. "
+            "Set it to the directory containing extended_prompts.txt, "
+            "SBERT_PROMPT_EMBEDDINGS.json, and video_encodings/"
+        )
+    if not vps_model_dir:
+        raise ValueError(
+            "VPS_MODEL_DIR environment variable not set. "
+            "Set it to the directory containing best.pth and config.json "
+            "(download from huggingface.co/datasets/supervideoVPS/super_video VPS_models/both)"
+        )
+
+    emb_dir = os.path.join(vps_data_root, "video_encodings")
+    prompt_file = os.path.join(vps_data_root, "extended_prompts.txt")
+    sbert_file = os.path.join(vps_data_root, "SBERT_PROMPT_EMBEDDINGS.json")
 
     with open(prompt_file) as f:
         prompt_lines = [l.strip() for l in f]
@@ -489,17 +515,14 @@ def preference_cached_refs(device):
           f"{len(ref_vision_embs)} ref vision embs, "
           f"{len(prompt_to_idx)} prompt->idx mappings")
 
-    model_dir = "dummy"
-    with open(os.path.join(model_dir, "config.json")) as f:
+    with open(os.path.join(vps_model_dir, "config.json")) as f:
         cfg = json.load(f)
     pair_model = PairMLP(cfg["input_dim"], cfg["hidden_dims"], cfg.get("dropout", 0.35))
     pair_model.load_state_dict(
-        torch.load(os.path.join(model_dir, "best.pth"), map_location="cpu", weights_only=True)
+        torch.load(os.path.join(vps_model_dir, "best.pth"), map_location="cpu", weights_only=True)
     )
     pair_model = pair_model.to(device).eval()
 
-    # Same path as api_test/EMBEDDING_MODEL/embed_wan_ref_grpo_videos.py: QwenVideoEmbedderA1.embed_video_only.
-    # MP4 frame rate matches generate_wan_flow_grpo_reference_videos / train_wan2_1 logging; Qwen sampling fps matches vision_only_encoder.FPS.
     _WAN_REF_MP4_FPS = 8
     embedder = QwenVideoEmbedderA1(device=str(device))
 
@@ -560,28 +583,39 @@ def preference_within_group_local(device):
 
     Qwen2.5-VL-7B runs on CPU so it does not contend with the Wan pipeline on the
     training GPU. Only the small PairMLP and a single feature vector batch use GPU.
+
+    Environment variable (required):
+        VPS_MODEL_DIR: Directory containing PairMLP model (best.pth, config.json)
+            Download from: huggingface.co/datasets/supervideoVPS/super_video (VPS_models/both)
     """
     import sys, os, json
 
-    _api_test = os.path.abspath("/simurgh/group/super_video/api_test")
-    for _p in (os.path.join(_api_test, "EMBEDDING_MODEL"), os.path.join(_api_test, "scripts")):
-        if _p not in sys.path:
-            sys.path.insert(0, _p)
+    # Add VPS_reward to path for imports
+    _flow_grpo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    _vps_reward_dir = os.path.join(_flow_grpo_root, "VPS_reward")
+    if _vps_reward_dir not in sys.path:
+        sys.path.insert(0, _vps_reward_dir)
 
     from vision_only_encoder import QwenVideoEmbedderA1
     from prompt_encoder import SbertPromptEmbedder
     from train_prompt_pair_mlp import PairMLP
 
-    model_type = _PREFERENCE_MODEL_TYPE
-    model_dir = os.path.join(_api_test, "EMBEDDING_MODEL", f"models-prompt-{model_type}")
-    with open(os.path.join(model_dir, "config.json")) as f:
+    vps_model_dir = os.environ.get("VPS_MODEL_DIR")
+    if not vps_model_dir:
+        raise ValueError(
+            "VPS_MODEL_DIR environment variable not set. "
+            "Set it to the directory containing best.pth and config.json "
+            "(download from huggingface.co/datasets/supervideoVPS/super_video VPS_models/both)"
+        )
+
+    with open(os.path.join(vps_model_dir, "config.json")) as f:
         cfg = json.load(f)
 
     vision_embedder = QwenVideoEmbedderA1(force_cpu=True)
     sbert_embedder = SbertPromptEmbedder(device="cpu")
     pair_model = PairMLP(cfg["input_dim"], cfg["hidden_dims"], cfg.get("dropout", 0.3)).to(device)
     pair_model.load_state_dict(
-        torch.load(os.path.join(model_dir, "best.pth"), map_location=device, weights_only=True)
+        torch.load(os.path.join(vps_model_dir, "best.pth"), map_location=device, weights_only=True)
     )
     pair_model.eval()
 

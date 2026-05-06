@@ -6,6 +6,10 @@ Receives G videos + prompt via pickled HTTP POST, returns scores where
 video[0] is the reference (score=0.5) and video[i>0] gets P(video_i > ref).
 
 Runs on a dedicated GPU (default port 18087).
+
+Environment variable (required):
+    VPS_MODEL_DIR: Directory containing PairMLP model (best.pth, config.json)
+        Download from: huggingface.co/datasets/supervideoVPS/super_video (VPS_models/both)
 """
 
 import os
@@ -18,18 +22,16 @@ import torch
 from flask import Flask, request, Response
 from PIL import Image
 
-_API_TEST = os.path.abspath("/simurgh/group/super_video/api_test")
-_EMBED_DIR = os.path.join(_API_TEST, "EMBEDDING_MODEL")
-_SCRIPTS_DIR = os.path.join(_API_TEST, "scripts")
-for _p in (_EMBED_DIR, _SCRIPTS_DIR):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
+# Add VPS_reward to path for imports
+_FLOW_GRPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_VPS_REWARD_DIR = os.path.join(_FLOW_GRPO_ROOT, "VPS_reward")
+if _VPS_REWARD_DIR not in sys.path:
+    sys.path.insert(0, _VPS_REWARD_DIR)
 
 from vision_only_encoder import QwenVideoEmbedderA1
 from prompt_encoder import SbertPromptEmbedder
 from train_prompt_pair_mlp import PairMLP
 
-DEFAULT_MODEL_DIR = os.path.join(_EMBED_DIR, "models-prompt-both")
 DEFAULT_CHECKPOINT = "best.pth"
 FPS = 4
 
@@ -45,6 +47,15 @@ def load_models():
     global vision_embedder, sbert_embedder, pair_model, device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+    # Get model directory from environment variable
+    vps_model_dir = os.environ.get("VPS_MODEL_DIR")
+    if not vps_model_dir:
+        raise ValueError(
+            "VPS_MODEL_DIR environment variable not set. "
+            "Set it to the directory containing best.pth and config.json "
+            "(download from huggingface.co/datasets/supervideoVPS/super_video VPS_models/both)"
+        )
+
     print("[preference_server] Loading QwenVideoEmbedderA1 ...")
     vision_embedder = QwenVideoEmbedderA1()
 
@@ -52,8 +63,8 @@ def load_models():
     sbert_embedder = SbertPromptEmbedder(device="cpu")
 
     print("[preference_server] Loading PairMLP ...")
-    cfg_path = os.path.join(DEFAULT_MODEL_DIR, "config.json")
-    ckpt_path = os.path.join(DEFAULT_MODEL_DIR, DEFAULT_CHECKPOINT)
+    cfg_path = os.path.join(vps_model_dir, "config.json")
+    ckpt_path = os.path.join(vps_model_dir, DEFAULT_CHECKPOINT)
     with open(cfg_path) as f:
         config = json.load(f)
     pair_model = PairMLP(

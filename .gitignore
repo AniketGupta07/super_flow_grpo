@@ -310,3 +310,6 @@ wandb/
 logs/
 notebooks/
 hf_cache/
+checkpoints/
+VPS_reward/neurips_plots/
+*.pth

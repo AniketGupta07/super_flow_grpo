@@ -68,14 +68,14 @@ def parse_args():
     p.add_argument(
         "--prompt_file",
         type=Path,
-        default=Path("/simurgh/group/super_video/api_test/EMBEDDING_MODEL/data/extended_prompts.txt"),
-        help="Text file with one prompt per line.",
+        required=True,
+        help="Text file with one prompt per line (e.g., data/extended_prompts.txt).",
     )
     p.add_argument(
         "--out_dir",
         type=Path,
-        default=None,
-        help="Output directory for ref_XXXXXXX.mp4 (default: flow_grpo/data/wan_reference_videos_flow_grpo/<job_id>)",
+        required=True,
+        help="Output directory for ref_XXXXXXX.mp4 files.",
     )
     p.add_argument("--prompt_line_start", type=int, default=None, help="1-based inclusive; requires --prompt_line_end")
     p.add_argument("--prompt_line_end", type=int, default=None, help="1-based inclusive; requires --prompt_line_start")
@@ -111,11 +111,7 @@ def main():
 
     base_seed = cfg.seed if args.base_seed is None else args.base_seed
 
-    job = os.environ.get("SLURM_ARRAY_JOB_ID") or os.environ.get("SLURM_JOB_ID") or "local"
-    task = os.environ.get("SLURM_ARRAY_TASK_ID")
-    if task is not None:
-        job = f"{job}_{task}"
-    out_dir = args.out_dir or (_FLOW_GRPO_ROOT / "data" / "wan_reference_videos_flow_grpo" / f"job_{job}")
+    out_dir = args.out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
 
     model_id = args.model_path or cfg.pretrained.model

@@ -1067,6 +1067,7 @@ def preference_wan2_1_test():
     config.run_name = "wan_flow_grpo_preference_test"
     config.save_dir = f'logs/video_preference/{config.run_name}'
     config.num_epochs = 10
+    config.sample.num_image_per_prompt = 4
     config.save_freq = 5
     config.eval_freq = 5
     return config

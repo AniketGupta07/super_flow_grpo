@@ -1,0 +1,49 @@
+{
+  "model": "mlp_regression",
+  "n_features": 26,
+  "n_train": 18478,
+  "n_val": 4226,
+  "n_test": 3776,
+  "architecture": {
+    "hidden_sizes": [
+      64,
+      128,
+      256,
+      128,
+      64
+    ],
+    "dropout_rate": 0.2
+  },
+  "training": {
+    "num_epochs_max": 500,
+    "early_stop_patience": 40,
+    "best_epoch": 37,
+    "best_val_mse": 0.054313089911383644
+  },
+  "train": {
+    "mse": 0.04057159141041502,
+    "mae": 0.16556216650312847
+  },
+  "val": {
+    "mse": 0.054313089911383644,
+    "mae": 0.19247978458520132
+  },
+  "test": {
+    "mse": 0.059275201382719245,
+    "mae": 0.19913068452763188
+  },
+  "elo": {
+    "k_scale": 100.0,
+    "reference_paths": {
+      "i2v_final": "/simurgh/group/super_video/api_test/EMBEDDING_MODEL/data/i2v_final.csv",
+      "t2v_final": "/simurgh/group/super_video/api_test/EMBEDDING_MODEL/data/t2v_final.csv"
+    },
+    "n_models_by_split": {
+      "train": 88,
+      "val": 80,
+      "test": 83
+    },
+    "correlations_file_csv": "/simurgh/group/super_video/api_test/final experiments/metrics_exp/mlp/elo_correlations.csv",
+    "correlations_file_json": "/simurgh/group/super_video/api_test/final experiments/metrics_exp/mlp/elo_correlations.json"
+  }
+}

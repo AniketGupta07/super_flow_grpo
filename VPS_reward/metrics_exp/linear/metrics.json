@@ -1,0 +1,62 @@
+{
+  "model": "linear_regression",
+  "n_features": 26,
+  "n_train": 18478,
+  "n_val": 4226,
+  "n_test": 3776,
+  "train": {
+    "mse": 0.06255824668038125,
+    "mae": 0.20967389367808079
+  },
+  "val": {
+    "mse": 0.060335004963585036,
+    "mae": 0.20691830074495252
+  },
+  "test": {
+    "mse": 0.06117740614896218,
+    "mae": 0.20679466510823
+  },
+  "coefficients": {
+    "clip_score_1": 0.7604687316863673,
+    "siglip2_score_1": 0.25444726099327364,
+    "mean_of_scores_1": -1.1453493131523091,
+    "technical_score_1": 1.309987075555176,
+    "aesthetic_score_1": 1.1564231784973769,
+    "overall_score_1": -0.16374823091735355,
+    "lpips_mean_1": 2.0656215963668783,
+    "lpips_std_1": -1.737387959854968,
+    "num_spikes_1": -0.008945089867440557,
+    "spike_ratio_1": 1.0604567958107325,
+    "visual_quality_1": 0.0014725134266172478,
+    "text_alignment_1": 0.056860961533548374,
+    "physical_consistency_1": 0.00047861118832365684,
+    "clip_score_2": -0.6152530588232251,
+    "siglip2_score_2": -0.3087152187660268,
+    "mean_of_scores_2": 0.9985169402895245,
+    "technical_score_2": -1.3679940969647206,
+    "aesthetic_score_2": -1.1511663056266752,
+    "overall_score_2": 0.17685448835741432,
+    "lpips_mean_2": -1.9008638499958421,
+    "lpips_std_2": 1.496091985197216,
+    "num_spikes_2": 0.0031656206598156367,
+    "spike_ratio_2": -0.4012714786990311,
+    "visual_quality_2": -0.011636596102131054,
+    "text_alignment_2": -0.06030604391814255,
+    "physical_consistency_2": 0.0025152018126716412
+  },
+  "intercept": 0.5144251445670227,
+  "elo": {
+    "k_scale": 100.0,
+    "reference_paths": {
+      "i2v_final": "/simurgh/group/super_video/api_test/EMBEDDING_MODEL/data/i2v_final.csv",
+      "t2v_final": "/simurgh/group/super_video/api_test/EMBEDDING_MODEL/data/t2v_final.csv"
+    },
+    "n_models_by_split": {
+      "train": 88,
+      "val": 80,
+      "test": 83
+    },
+    "correlations_file_csv": "/simurgh/group/super_video/api_test/final experiments/metrics_exp/linear/elo_correlations.csv",
+    "correlations_file_json": "/simurgh/group/super_video/api_test/final experiments/metrics_exp/linear/elo_correlations.json"
+  }
+}
