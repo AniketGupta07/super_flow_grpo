@@ -304,7 +304,7 @@ Training progress is logged to Weights & Biases. Key metrics to monitor:
 
 ## Citation
 
-If you use this code, please cite:
+This code is based upon following work:
 
 ```bibtex
 @article{liu2025flow,
