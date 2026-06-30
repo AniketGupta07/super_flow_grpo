@@ -21,18 +21,20 @@ python -m http.server 8000
 4. The site publishes at `https://<user>.github.io/<repo>/`.
 
 ## Links (current state)
-- **Paper** → `assets/paper/vps_paper.pdf` (hosted compiled PDF) ✅
 - **Code** → https://anonymous.4open.science/r/super_flow_grpo/ ✅
 - **Model** → Hugging Face `best.pth` ✅
 - **Dataset** → Hugging Face `supervideoVPS/super_video` ✅
-- **arXiv** → still a disabled placeholder (search `TODO` in `index.html`): set its `href` and
+- **arXiv** → disabled placeholder (search `TODO` in `index.html`): set its `href` and
   remove `aria-disabled="true"` when available.
 
+No Paper button and no venue/anonymity wording are shown, to stay clear of review guidelines.
+The compiled PDF is intentionally **not** hosted.
+
 ## Remaining TODO before publishing
-- **Authors / affiliations** — currently `Anonymous Authors` (double-blind). De-anonymize when allowed.
+- **Authors / affiliations** — currently `Anonymous Authors`. De-anonymize when allowed.
 - **arXiv** button (see above).
-- **BibTeX** — finalize the citation block.
+- **BibTeX** — replace the placeholder citation in `index.html` once the arXiv preprint exists.
 
 ## Media
 - `assets/videos/baseline/` and `assets/videos/finetuned/` hold the WAN-2.1 before/after clips
-  (indices 09, 16, 23), shown as autoplaying looped `<video>` pairs in the Qualitative section.
+  (indices 09, 16, 23, 29), shown as autoplaying looped `<video>` pairs in the Qualitative section.
