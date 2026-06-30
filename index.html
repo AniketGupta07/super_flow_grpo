@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VPS: Video Preference Score — Recreating Video Arenas via Automated Preference Scoring</title>
+  <meta name="description" content="Video Preference Score (VPS): a fully automated, pairwise preference model that recreates large-scale Elo-based video arenas and serves as a reward model for reinforcement fine-tuning of video generators." />
+
+  <!-- Social / Open Graph -->
+  <meta property="og:title" content="VPS: Recreating Video Arenas via Automated Preference Scoring" />
+  <meta property="og:description" content="A fully automated video preference score that recreates Elo-based video arenas and improves WAN-2.1 by +51 Elo via Flow-GRPO." />
+  <meta property="og:type" content="website" />
+  <meta property="og:image" content="assets/figures/vps_overview.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Newsreader:ital,opsz@0,6..72;1,6..72&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+
+  <!-- ============================== HERO ============================== -->
+  <header class="hero">
+    <div class="container">
+      <p class="venue">NeurIPS 2026 &middot; Evaluations &amp; Datasets Track <span class="sep">(under review)</span></p>
+      <h1 class="title">Recreating Video Arenas via<br />Automated Preference Scoring</h1>
+      <p class="subtitle">Video Preference Score (<span class="vps">VPS</span>)</p>
+
+      <!-- TODO: replace with real author list when de-anonymized -->
+      <p class="authors">Anonymous Authors</p>
+      <p class="affil">Paper under double-blind review</p>
+
+      <nav class="links">
+        <!-- TODO: fill in real URLs when available -->
+        <a class="btn" href="#" data-link="paper" aria-disabled="true">
+          <span class="ico">&#128196;</span> Paper
+        </a>
+        <a class="btn" href="#" data-link="arxiv" aria-disabled="true">
+          <span class="ico">&#128206;</span> arXiv
+        </a>
+        <a class="btn" href="#" data-link="code" aria-disabled="true">
+          <span class="ico">&#128187;</span> Code
+        </a>
+        <a class="btn" href="#" data-link="hf-model" aria-disabled="true">
+          <span class="ico">&#129303;</span> Model
+        </a>
+        <a class="btn" href="#" data-link="hf-data" aria-disabled="true">
+          <span class="ico">&#128202;</span> Dataset
+        </a>
+      </nav>
+      <p class="links-note">Links will be added soon.</p>
+    </div>
+  </header>
+
+  <main>
+    <!-- ============================== TEASER ============================== -->
+    <section class="section">
+      <div class="container">
+        <figure class="figure">
+          <img src="assets/figures/vps_overview.png" alt="VPS overview: an automated preference score that recreates a public video arena and serves as a reward model." />
+          <figcaption>
+            <b>Overview.</b> <span class="vps">VPS</span> is an automated preference score that approximates a public video
+            arena built from large-scale human votes. It recreates the Elo-based leaderboard with high correlation and
+            doubles as a reward model for reinforcement fine-tuning a video generator.
+          </figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- ============================== ABSTRACT ============================== -->
+    <section class="section">
+      <div class="container narrow">
+        <h2>Abstract</h2>
+        <p class="abstract">
+          Evaluating video generation models is notoriously challenging; existing metrics either fail to align with
+          human judgment or rely on costly, unscalable human ratings. In this work, we introduce
+          <b>Video Preference Score (<span class="vps">VPS</span>)</b>, a fully automated video preference score
+          designed to directly model human judgment and accurately recreate large-scale, Elo-based video arenas.
+          Trained on a newly collected dataset that augments generated videos with retrieved real-world footage,
+          <span class="vps">VPS</span> evaluates paired videos against complex text prompts to predict human preference.
+          Experiments demonstrate that <span class="vps">VPS</span> correlates highly with human consensus and
+          generalizes zero-shot across unseen models and benchmarks. Furthermore, we showcase its utility beyond
+          evaluation: as a plug-in reward model, <span class="vps">VPS</span> seamlessly integrates with Flow-GRPO to
+          improve WAN-2.1's generative quality by <b>51 Elo points</b>. Overall, <span class="vps">VPS</span> provides a
+          scalable and generalizable solution for both evaluating and aligning modern video generation models.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============================== HIGHLIGHTS ============================== -->
+    <section class="section alt">
+      <div class="container">
+        <h2>Highlights</h2>
+        <div class="cards">
+          <div class="card">
+            <div class="stat">0.688</div>
+            <div class="stat-label">Spearman</div>
+            <p>Best held-out arena leaderboard reconstruction on Artificial Analysis text-to-video pairs, beating
+              metric- and rating-based baselines.</p>
+          </div>
+          <div class="card">
+            <div class="stat">0.74</div>
+            <div class="stat-label">Spearman (zero-shot)</div>
+            <p>Generalizes to the external Arena&nbsp;AI leaderboard across 31 shared models without retraining
+              (Kendall's &tau;&nbsp;=&nbsp;0.57).</p>
+          </div>
+          <div class="card">
+            <div class="stat">+51</div>
+            <div class="stat-label">Elo via Flow-GRPO</div>
+            <p>Used as a plug-in reward model, <span class="vps">VPS</span>-Combined lifts WAN-2.1 by 51 Elo points
+              (vs. +9 for <span class="vps">VPS</span>-AA).</p>
+          </div>
+          <div class="card">
+            <div class="stat">553K</div>
+            <div class="stat-label">preference triplets</div>
+            <p>A new pairwise dataset combining arena-generated and retrieved real-world videos &mdash; an order of
+              magnitude larger than prior preference data.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================== METHOD ============================== -->
+    <section class="section">
+      <div class="container narrow">
+        <h2>How it works</h2>
+
+        <h3>1 &middot; A pairwise preference model</h3>
+        <p>
+          Given a prompt <i>y</i> and two videos <i>x<sup>A</sup></i>, <i>x<sup>B</sup></i>, <span class="vps">VPS</span>
+          predicts <i>P(A&nbsp;&#8827;&nbsp;B&nbsp;|&nbsp;y)</i> &mdash; the probability that the first video is preferred.
+          Each video is encoded with <b>Qwen2.5-VL-7B</b> (3584-d) and the prompt with <b>all-MiniLM-L6-v2</b> (384-d).
+          The concatenated features feed an MLP head, trained with soft binary cross-entropy directly on pairwise
+          comparisons &mdash; matching the structure of human preference arenas rather than pointwise ratings.
+        </p>
+
+        <h3>2 &middot; Weakly-supervised targets at scale</h3>
+        <p>
+          Soft preference labels come from signals that are noisy but <i>available at scale</i>: public Elo gaps for
+          generated&ndash;generated pairs (via a Bradley&ndash;Terry sigmoid), relative social-media engagement
+          (<code>respond_count</code>) for real&ndash;real pairs, and a fixed naturalness prior (0.75) for
+          real&ndash;generated pairs.
+        </p>
+
+        <h3>3 &middot; Recreating the leaderboard</h3>
+        <p>
+          Predicted pairwise probabilities are converted to per-model Elo scores by a scaled logit transform and a
+          least-squares solve over all pairs, then affine-aligned to the public leaderboard. Rankings are scored with
+          Spearman's &rho;, Kendall's &tau;, top-k overlap, and median rank error.
+        </p>
+
+        <h3>4 &middot; A plug-in reward model</h3>
+        <p>
+          To use <span class="vps">VPS</span> in RL, each generated video is compared against a fixed, prompt-matched
+          reference embedding cached from a base WAN-2.1 sample. This yields a stable pointwise reward while preserving
+          pairwise semantics, which we instantiate in <b>Flow-GRPO</b> to fine-tune WAN-2.1.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============================== RESULTS ============================== -->
+    <section class="section alt">
+      <div class="container">
+        <h2>Results</h2>
+
+        <figure class="figure">
+          <img src="assets/figures/panel_test_t2v.png" alt="Recreated Elo vs public Artificial Analysis Elo for VPS-AA and VPS-Combined." />
+          <figcaption>
+            <b>Recreating the arena.</b> Recreated Elo scores versus the public Artificial Analysis Elo.
+            <span class="vps">VPS</span>-AA specializes for AA-only reconstruction, while
+            <span class="vps">VPS</span>-Combined additionally learns from real-world social-video anchors.
+          </figcaption>
+        </figure>
+
+        <figure class="figure">
+          <img src="assets/figures/panel_scatter_all.png" alt="Generalization to Arena AI and ranking of held-out top-tier models." />
+          <figcaption>
+            <b>Generalization.</b> <b>(a&ndash;b)</b> Zero-shot transfer to the Arena&nbsp;AI leaderboard
+            (Spearman&nbsp;0.74, Kendall&nbsp;0.57 over 31 shared models). <b>(c)</b> Strong models held out from
+            training (red) are still placed near the top of the reconstructed leaderboard &mdash; supporting efficient
+            updates for newly released generators.
+          </figcaption>
+        </figure>
+
+        <figure class="figure">
+          <img src="assets/figures/panel_leaderboard.png" alt="VPS-AA vs VPS-Combined as reward models for video generation." />
+          <figcaption>
+            <b>Reward model.</b> Predicted Elo over Flow-GRPO training. <span class="vps">VPS</span>-Combined improves
+            steadily (<b>+51 Elo</b>), while <span class="vps">VPS</span>-AA saturates quickly (+9 Elo) &mdash; real-world
+            videos provide complementary supervision for downstream RL.
+          </figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- ============================== QUALITATIVE ============================== -->
+    <section class="section">
+      <div class="container">
+        <h2>Qualitative comparison</h2>
+        <figure class="figure">
+          <img src="assets/figures/video_comparison_29.png" alt="WAN-2.1 before and after VPS Flow-GRPO fine-tuning." />
+          <figcaption>
+            After reinforcement fine-tuning with <span class="vps">VPS</span>, WAN-2.1 shows enhanced motion and better
+            alignment with the text prompt (e.g. &ldquo;slowly track backward&rdquo;), improving camera motion, content
+            relevance, and object movement.
+          </figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- ============================== BIBTEX ============================== -->
+    <section class="section alt">
+      <div class="container narrow">
+        <h2>BibTeX</h2>
+        <p class="muted">Citation will be finalized upon release.</p>
+        <pre class="bibtex"><code>@inproceedings{vps2026,
+  title     = {Recreating Video Arenas via Automated Preference Scoring},
+  author    = {Anonymous Authors},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS),
+               Datasets and Benchmarks Track},
+  year      = {2026},
+  note      = {Under review}
+}</code></pre>
+      </div>
+    </section>
+  </main>
+
+  <!-- ============================== FOOTER ============================== -->
+  <footer class="footer">
+    <div class="container narrow">
+      <p>
+        Built on <a href="https://arxiv.org/abs/2505.05470">Flow-GRPO</a> and
+        <a href="https://github.com/Wan-Video/Wan2.1">WAN-2.1</a>.
+      </p>
+      <p class="muted">Website template is free to reuse. &copy; 2026 the authors.</p>
+    </div>
+  </footer>
+
+</body>
+</html>
