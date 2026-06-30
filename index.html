@@ -57,7 +57,7 @@
     <!-- ============================== TEASER ============================== -->
     <section class="section">
       <div class="container">
-        <figure class="figure">
+        <figure class="figure wide">
           <img src="assets/figures/vps_overview.png" alt="VPS overview: an automated preference score that recreates a public video arena and serves as a reward model." />
           <figcaption>
             <b>Overview.</b> <span class="vps">VPS</span> is an automated preference score that approximates a public video
@@ -240,14 +240,17 @@
         </div>
         <p class="vid-cap">The prompt asks the camera to zoom out, which the baseline fails to do.</p>
 
-        <figure class="figure" style="margin-top:40px">
-          <img src="assets/figures/video_comparison_29.png" alt="WAN-2.1 before and after VPS Flow-GRPO fine-tuning, astronaut example." />
-          <figcaption>
-            Frame-by-frame comparison for &ldquo;slowly track backward&rdquo;: after fine-tuning with
-            <span class="vps">VPS</span>, WAN-2.1 shows enhanced motion and better alignment with the prompt &mdash; here,
-            capturing the movement of the astronaut.
-          </figcaption>
-        </figure>
+        <div class="vid-pair">
+          <div class="vid-col">
+            <span class="vid-tag base">Baseline WAN-2.1</span>
+            <video src="assets/videos/baseline/ckpt_0000029.mp4" autoplay loop muted playsinline></video>
+          </div>
+          <div class="vid-col">
+            <span class="vid-tag ft">+ <span class="vps">VPS</span> (Flow-GRPO)</span>
+            <video src="assets/videos/finetuned/ckpt_0000029.mp4" autoplay loop muted playsinline></video>
+          </div>
+        </div>
+        <p class="vid-cap">For &ldquo;slowly track backward&rdquo;, the baseline fails to capture the movement of the astronaut.</p>
       </div>
     </section>
 

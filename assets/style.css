@@ -135,13 +135,15 @@ code {
 }
 .figure:last-child { margin-bottom: 0; }
 .figure img {
-  max-width: 100%;
+  max-width: min(100%, 720px);
   height: auto;
   border-radius: 10px;
   border: 1px solid var(--line);
   background: #fff;
   box-shadow: 0 4px 24px rgba(20, 24, 40, 0.06);
 }
+/* the overview teaser is a wide horizontal figure — let it breathe a bit more */
+.figure.wide img { max-width: min(100%, 920px); }
 .figure figcaption {
   margin: 14px auto 0;
   max-width: 760px;
@@ -157,7 +159,8 @@ code {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
-  margin-bottom: 8px;
+  margin: 0 auto 8px;
+  max-width: 720px;
 }
 .vid-col {
   position: relative;
