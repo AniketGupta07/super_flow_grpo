@@ -32,24 +32,24 @@
       <p class="affil">Paper under double-blind review</p>
 
       <nav class="links">
-        <!-- TODO: fill in real URLs when available -->
-        <a class="btn" href="#" data-link="paper" aria-disabled="true">
+        <a class="btn" href="assets/paper/vps_paper.pdf" data-link="paper" target="_blank" rel="noopener">
           <span class="ico">&#128196;</span> Paper
         </a>
+        <!-- TODO: set arXiv href and remove aria-disabled when available -->
         <a class="btn" href="#" data-link="arxiv" aria-disabled="true">
           <span class="ico">&#128206;</span> arXiv
         </a>
-        <a class="btn" href="#" data-link="code" aria-disabled="true">
+        <a class="btn" href="https://anonymous.4open.science/r/super_flow_grpo/" data-link="code" target="_blank" rel="noopener">
           <span class="ico">&#128187;</span> Code
         </a>
-        <a class="btn" href="#" data-link="hf-model" aria-disabled="true">
+        <a class="btn" href="https://huggingface.co/datasets/supervideoVPS/super_video/blob/main/VPS_models/both/best.pth" data-link="hf-model" target="_blank" rel="noopener">
           <span class="ico">&#129303;</span> Model
         </a>
-        <a class="btn" href="#" data-link="hf-data" aria-disabled="true">
+        <a class="btn" href="https://huggingface.co/datasets/supervideoVPS/super_video/tree/main" data-link="hf-data" target="_blank" rel="noopener">
           <span class="ico">&#128202;</span> Dataset
         </a>
       </nav>
-      <p class="links-note">Links will be added soon.</p>
+      <p class="links-note">arXiv link coming soon.</p>
     </div>
   </header>
 
@@ -198,12 +198,54 @@
     <section class="section">
       <div class="container">
         <h2>Qualitative comparison</h2>
-        <figure class="figure">
-          <img src="assets/figures/video_comparison_29.png" alt="WAN-2.1 before and after VPS Flow-GRPO fine-tuning." />
+        <p class="muted q-intro">
+          WAN-2.1 before vs. after Flow-GRPO fine-tuning with the <span class="vps">VPS</span>-Combined reward. The
+          fine-tuned model better follows the prompt &mdash; sharper camera control, more coherent motion, and improved
+          content relevance. Videos loop automatically.
+        </p>
+
+        <div class="vid-pair">
+          <div class="vid-col">
+            <span class="vid-tag base">Baseline WAN-2.1</span>
+            <video src="assets/videos/baseline/ckpt_0000009.mp4" autoplay loop muted playsinline></video>
+          </div>
+          <div class="vid-col">
+            <span class="vid-tag ft">+ <span class="vps">VPS</span> (Flow-GRPO)</span>
+            <video src="assets/videos/finetuned/ckpt_0000009.mp4" autoplay loop muted playsinline></video>
+          </div>
+        </div>
+        <p class="vid-cap">The baseline fails to capture the iceberg underwater; the fine-tuned model recovers it.</p>
+
+        <div class="vid-pair">
+          <div class="vid-col">
+            <span class="vid-tag base">Baseline WAN-2.1</span>
+            <video src="assets/videos/baseline/ckpt_0000016.mp4" autoplay loop muted playsinline></video>
+          </div>
+          <div class="vid-col">
+            <span class="vid-tag ft">+ <span class="vps">VPS</span> (Flow-GRPO)</span>
+            <video src="assets/videos/finetuned/ckpt_0000016.mp4" autoplay loop muted playsinline></video>
+          </div>
+        </div>
+        <p class="vid-cap">The baseline fails to capture the movement of the camel.</p>
+
+        <div class="vid-pair">
+          <div class="vid-col">
+            <span class="vid-tag base">Baseline WAN-2.1</span>
+            <video src="assets/videos/baseline/ckpt_0000023.mp4" autoplay loop muted playsinline></video>
+          </div>
+          <div class="vid-col">
+            <span class="vid-tag ft">+ <span class="vps">VPS</span> (Flow-GRPO)</span>
+            <video src="assets/videos/finetuned/ckpt_0000023.mp4" autoplay loop muted playsinline></video>
+          </div>
+        </div>
+        <p class="vid-cap">The prompt asks the camera to zoom out, which the baseline fails to do.</p>
+
+        <figure class="figure" style="margin-top:40px">
+          <img src="assets/figures/video_comparison_29.png" alt="WAN-2.1 before and after VPS Flow-GRPO fine-tuning, astronaut example." />
           <figcaption>
-            After reinforcement fine-tuning with <span class="vps">VPS</span>, WAN-2.1 shows enhanced motion and better
-            alignment with the text prompt (e.g. &ldquo;slowly track backward&rdquo;), improving camera motion, content
-            relevance, and object movement.
+            Frame-by-frame comparison for &ldquo;slowly track backward&rdquo;: after fine-tuning with
+            <span class="vps">VPS</span>, WAN-2.1 shows enhanced motion and better alignment with the prompt &mdash; here,
+            capturing the movement of the astronaut.
           </figcaption>
         </figure>
       </div>

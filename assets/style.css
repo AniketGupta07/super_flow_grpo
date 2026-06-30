@@ -150,6 +150,52 @@ code {
   line-height: 1.55;
 }
 
+/* ---------------- VIDEO PAIRS ---------------- */
+.q-intro { max-width: 760px; margin: 0 0 28px; }
+
+.vid-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+.vid-col {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #000;
+  box-shadow: 0 4px 24px rgba(20, 24, 40, 0.06);
+}
+.vid-col video {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.vid-tag {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 2;
+  padding: 4px 11px;
+  border-radius: 999px;
+  font-size: .76rem;
+  font-weight: 600;
+  letter-spacing: .01em;
+  color: #fff;
+  backdrop-filter: blur(4px);
+}
+.vid-tag.base { background: rgba(40, 44, 56, 0.82); }
+.vid-tag.ft { background: rgba(219, 39, 119, 0.85); }
+.vid-tag .vps { color: #fff; }
+
+.vid-cap {
+  text-align: center;
+  font-size: .9rem;
+  color: var(--muted);
+  margin: 6px 0 34px;
+}
+
 /* ---------------- CARDS ---------------- */
 .cards {
   display: grid;
@@ -208,4 +254,5 @@ code {
   .cards { grid-template-columns: 1fr; }
   .hero { padding: 48px 0 40px; }
   .section { padding: 40px 0; }
+  .vid-pair { grid-template-columns: 1fr; }
 }

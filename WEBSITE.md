@@ -20,12 +20,19 @@ python -m http.server 8000
 3. Source: **Deploy from a branch**; Branch: **`gh-pages`** / **`/ (root)`**.
 4. The site publishes at `https://<user>.github.io/<repo>/`.
 
-## TODO before publishing (search for `TODO` in `index.html`)
+## Links (current state)
+- **Paper** → `assets/paper/vps_paper.pdf` (hosted compiled PDF) ✅
+- **Code** → https://anonymous.4open.science/r/super_flow_grpo/ ✅
+- **Model** → Hugging Face `best.pth` ✅
+- **Dataset** → Hugging Face `supervideoVPS/super_video` ✅
+- **arXiv** → still a disabled placeholder (search `TODO` in `index.html`): set its `href` and
+  remove `aria-disabled="true"` when available.
+
+## Remaining TODO before publishing
 - **Authors / affiliations** — currently `Anonymous Authors` (double-blind). De-anonymize when allowed.
-- **Links** — the Paper / arXiv / Code / Model / Dataset buttons are disabled placeholders
-  (`data-link="..."`, `aria-disabled="true"`). Set each `href` and remove `aria-disabled="true"` once you have:
-  - Paper / arXiv PDF
-  - Code repository
-  - Hugging Face model
-  - Hugging Face dataset
+- **arXiv** button (see above).
 - **BibTeX** — finalize the citation block.
+
+## Media
+- `assets/videos/baseline/` and `assets/videos/finetuned/` hold the WAN-2.1 before/after clips
+  (indices 09, 16, 23), shown as autoplaying looped `<video>` pairs in the Qualitative section.
