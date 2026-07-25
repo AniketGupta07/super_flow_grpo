@@ -578,6 +578,153 @@ def preference_cached_refs(device):
     return _fn
 
 
+def random_score(device):
+    """Uniform random reward in [0, 1), as a control baseline against real preference rewards.
+
+    Environment variables (optional):
+        RANDOM_REWARD_SEED: Integer seed for reproducible reward streams.
+    """
+    import os
+
+    seed = os.environ.get("RANDOM_REWARD_SEED")
+    rng = np.random.default_rng(int(seed) if seed else None)
+
+    def _fn(images, prompts, metadata):
+        return rng.random(len(prompts)).tolist(), {}
+
+    return _fn
+
+
+def clip_preference(device):
+    """Probability that a generated video beats its reference video, from CLIP scores.
+
+    Both the generated clip and the cached base-model reference clip for the same prompt
+    are scored against the prompt with CLIP (mean over sampled frames); a softmax over the
+    two scores gives a 0-1 preference probability, matching the output range of
+    `preference_cached_refs`.
+
+    Environment variables:
+        WAN_REF_VIDEO_DIR (required): Colon-separated directories holding reference videos
+            named ref_<7-digit line number>.mp4 (as produced by
+            scripts/generate_wan_flow_grpo_reference_videos.py). Searched recursively, so a
+            parent of the per-slurm-job subdirectories works.
+        CLIP_REF_PROMPT_FILE: Prompt file defining the line-number <-> prompt mapping.
+            Defaults to <VPS_DATA_ROOT>/extended_prompts.txt, then <repo>/data/extended_prompts.txt.
+        CLIP_PREFERENCE_TEMPERATURE: Softmax temperature on raw CLIP logits (default 1.0).
+        CLIP_PREFERENCE_NUM_FRAMES: Frames sampled per video (default 8).
+    """
+    import os
+    import json
+    import re
+
+    import imageio
+
+    from flow_grpo.clip_scorer import ClipScorer
+
+    # ClipScorer divides logits_per_image by 30; undo it so the softmax sees raw CLIP logits.
+    _CLIP_LOGIT_SCALE = 30.0
+    _REF_NAME_RE = re.compile(r"^ref_(\d+)\.mp4$")
+
+    ref_dirs = [p for p in os.environ.get("WAN_REF_VIDEO_DIR", "").split(":") if p]
+    if not ref_dirs:
+        raise ValueError(
+            "WAN_REF_VIDEO_DIR environment variable not set. "
+            "Set it to the directory (or colon-separated directories) containing "
+            "ref_XXXXXXX.mp4 reference videos."
+        )
+
+    idx_to_path = {}
+    prompt_to_idx = {}
+    for root in ref_dirs:
+        if not os.path.isdir(root):
+            raise ValueError(f"WAN_REF_VIDEO_DIR entry is not a directory: {root}")
+        for dirpath, _, filenames in os.walk(root):
+            for fname in filenames:
+                match = _REF_NAME_RE.match(fname)
+                if match:
+                    idx_to_path.setdefault(int(match.group(1)), os.path.join(dirpath, fname))
+            if "manifest.json" in filenames:
+                with open(os.path.join(dirpath, "manifest.json")) as f:
+                    for entry in json.load(f):
+                        if entry.get("prompt"):
+                            prompt_to_idx.setdefault(entry["prompt"], entry["index"])
+
+    prompt_file = os.environ.get("CLIP_REF_PROMPT_FILE")
+    if not prompt_file:
+        vps_data_root = os.environ.get("VPS_DATA_ROOT")
+        candidates = []
+        if vps_data_root:
+            candidates.append(os.path.join(vps_data_root, "extended_prompts.txt"))
+        _flow_grpo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        candidates.append(os.path.join(_flow_grpo_root, "data", "extended_prompts.txt"))
+        prompt_file = next((p for p in candidates if os.path.isfile(p)), None)
+    if prompt_file:
+        with open(prompt_file) as f:
+            for i, line in enumerate(f):
+                text = line.strip()
+                if text:
+                    prompt_to_idx.setdefault(text, i + 1)
+    elif not prompt_to_idx:
+        raise ValueError(
+            "No prompt -> reference index mapping available. Set CLIP_REF_PROMPT_FILE to the "
+            "prompt file used to generate the reference videos, or provide a manifest.json "
+            "inside WAN_REF_VIDEO_DIR."
+        )
+
+    temperature = float(os.environ.get("CLIP_PREFERENCE_TEMPERATURE", 1.0))
+    num_frames = int(os.environ.get("CLIP_PREFERENCE_NUM_FRAMES", 8))
+
+    print(f"[clip_preference] {len(idx_to_path)} reference videos, "
+          f"{len(prompt_to_idx)} prompt->idx mappings, "
+          f"temperature={temperature}, frames={num_frames}")
+
+    scorer = ClipScorer(device=device)
+    ref_score_cache = {}
+
+    def _score_frames(frames, prompt):
+        sample_at = np.linspace(0, len(frames) - 1, min(num_frames, len(frames)))
+        batch = np.stack([np.asarray(frames[i]) for i in sample_at.round().astype(int)])
+        batch = torch.from_numpy(batch).permute(0, 3, 1, 2).float() / 255.0
+        return scorer(batch, [prompt] * len(batch)).mean().item() * _CLIP_LOGIT_SCALE
+
+    def _reference_score(idx, prompt):
+        if idx not in ref_score_cache:
+            reader = imageio.get_reader(idx_to_path[idx], format="FFMPEG")
+            try:
+                frames = [np.asarray(frame) for frame in reader]
+            finally:
+                reader.close()
+            ref_score_cache[idx] = _score_frames(frames, prompt)
+        return ref_score_cache[idx]
+
+    @torch.no_grad()
+    def _fn(images, prompts, metadata):
+        if isinstance(images, torch.Tensor):
+            if images.dim() == 5 and images.shape[2] == 3:
+                images = images.permute(0, 1, 3, 4, 2)
+            images = (images * 255).round().clamp(0, 255).to(torch.uint8).cpu().numpy()
+
+        scores = []
+        for i in range(len(images)):
+            idx = prompt_to_idx.get(prompts[i])
+            frames = list(images[i])
+            if idx is None or idx not in idx_to_path or len(frames) == 0:
+                scores.append(0.5)
+                continue
+            try:
+                gen_score = _score_frames(frames, prompts[i])
+                ref_score = _reference_score(idx, prompts[i])
+            except Exception as exc:
+                print(f"[clip_preference] scoring fallback for sample {i}: {exc}")
+                scores.append(0.5)
+                continue
+            pair = torch.tensor([gen_score, ref_score]) / temperature
+            scores.append(torch.softmax(pair, dim=0)[0].item())
+        return scores, {}
+
+    return _fn
+
+
 def preference_within_group_local(device):
     """Scores videos within a group against the first video as reference (in-process).
 
@@ -661,6 +808,8 @@ def multi_score(device, score_dict):
         "preference_within_group": preference_within_group_remote,
         "preference_within_group_local": preference_within_group_local,
         "preference_cached_refs": preference_cached_refs,
+        "random": random_score,
+        "clip_preference": clip_preference,
     }
     score_fns={}
     for score_name, weight in score_dict.items():

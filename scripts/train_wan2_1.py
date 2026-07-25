@@ -8,7 +8,7 @@ import time
 import json
 from absl import app, flags
 from accelerate import Accelerator
-from ml_collections import config_flags
+from ml_collections import config_dict, config_flags
 from accelerate.utils import set_seed, ProjectConfiguration
 from accelerate.logging import get_logger
 from diffusers import StableDiffusion3Pipeline, FlowMatchEulerDiscreteScheduler, WanPipeline
@@ -55,6 +55,17 @@ flags.DEFINE_string(
     "out_dir",
     "",
     "Optional checkpoint output directory. If set, checkpoints are saved as out_dir/checkpoint-<global_step>/lora.",
+)
+REWARD_FN_CHOICES = {
+    "vps": "preference_cached_refs",
+    "random": "random",
+    "clip": "clip_preference",
+}
+flags.DEFINE_enum(
+    "reward_fn",
+    "",
+    [""] + list(REWARD_FN_CHOICES),
+    "Reward function override. Empty keeps config.reward_fn as defined in the config file.",
 )
 
 logger = get_logger(__name__)
@@ -390,6 +401,13 @@ def main(_):
     # basic Accelerate and logging setup
     config = FLAGS.config
     flow_grpo.rewards.set_preference_model_type(FLAGS.model_type)
+
+    if FLAGS.reward_fn:
+        with config.unlocked():
+            config.reward_fn = config_dict.ConfigDict(
+                {REWARD_FN_CHOICES[FLAGS.reward_fn]: 1.0}
+            )
+        print(f"[train_wan2_1] reward_fn={FLAGS.reward_fn} -> {dict(config.reward_fn)}")
 
     unique_id = datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S")
     if not config.run_name:
