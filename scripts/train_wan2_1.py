@@ -60,6 +60,8 @@ REWARD_FN_CHOICES = {
     "vps": "preference_cached_refs",
     "random": "random",
     "clip": "clip_preference",
+    "clip2": "clip_video",
+    "videoscore": "videoscore2",
 }
 flags.DEFINE_enum(
     "reward_fn",

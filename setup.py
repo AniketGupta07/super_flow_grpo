@@ -54,7 +54,12 @@ setup(
         "openai",
         "sentence-transformers",
         "qwen-vl-utils",
-        "torchcodec",
+        # torchcodec declares no torch requirement, so an unpinned install resolves to a build
+        # for a newer torch and fails to load its shared library. 0.2 is the torch 2.6 match.
+        "torchcodec==0.2.1",
+        # Video decoding backend qwen_vl_utils falls back to via torchvision.io.read_video,
+        # used by the qwenvl/VPS/videoscore2 rewards.
+        "av",
         "imageio",
         "easydict",
         "ftfy",

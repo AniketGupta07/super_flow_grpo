@@ -14,6 +14,7 @@ Reward functions (give as the first argument or via -r):
   vps         VPS PairMLP probability against the cached reference video (default)
   random      Uniform 0-1, as a control baseline
   clip        Softmax of CLIP scores against the reference video (needs WAN_REF_VIDEO_DIR)
+  clip2       CLIP score of the video against its prompt alone, reference-free
   videoscore  VideoScore2 visual quality / alignment / physics blend, reference-free
 
 Options:
@@ -58,9 +59,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "$REWARD_FN" in
-    vps|random|clip|videoscore) ;;
+    vps|random|clip|clip2|videoscore) ;;
     *)
-        echo "[grpo_wan_preference] Invalid reward function '$REWARD_FN'. Expected one of: vps, random, clip, videoscore." >&2
+        echo "[grpo_wan_preference] Invalid reward function '$REWARD_FN'. Expected one of: vps, random, clip, clip2, videoscore." >&2
         usage >&2
         exit 1
         ;;
@@ -72,7 +73,11 @@ if [[ "$REWARD_FN" == "clip" && -z "${WAN_REF_VIDEO_DIR:-}" ]]; then
 fi
 
 echo "[grpo_wan_preference] Launching training with $NUM_TRAIN_GPUS GPUs (config=$CONFIG, reward_fn=$REWARD_FN) ..."
-echo "[grpo_wan_preference] Qwen vision embedder runs on CPU per process (Wan stays on GPU). For local test, NUM_TRAIN_GPUS=1 avoids loading multiple 7B copies in RAM."
+if [[ "$REWARD_FN" == "videoscore" ]]; then
+    echo "[grpo_wan_preference] VideoScore2 loads a 7B scorer on the training GPU (~16 GiB) and takes ~10-30s per clip (it writes a rationale before scoring; sampling makes the length vary). Lower VIDEOSCORE2_FPS / VIDEOSCORE2_MAX_PIXELS / VIDEOSCORE2_MAX_NEW_TOKENS to speed it up, VIDEOSCORE2_TEMPERATURE=0 for a deterministic reward, or VIDEOSCORE2_DEVICE=cpu to keep the GPU free."
+else
+    echo "[grpo_wan_preference] Qwen vision embedder runs on CPU per process (Wan stays on GPU). For local test, NUM_TRAIN_GPUS=1 avoids loading multiple 7B copies in RAM."
+fi
 
 accelerate launch \
     --config_file "$SCRIPT_DIR/accelerate_configs/multi_gpu.yaml" \

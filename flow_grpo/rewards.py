@@ -725,6 +725,293 @@ def clip_preference(device):
     return _fn
 
 
+def clip_video_score(device):
+    """CLIP alignment between a generated video and its prompt, with no reference video.
+
+    The video analogue of `clip_score`: sampled frames are scored against the prompt and
+    averaged, on the same logits/30 scale (roughly 0-1). Since GRPO normalizes rewards
+    within a prompt group and the reference score is constant across a group, this ranks
+    samples the same way `clip_preference` does while skipping the reference pass.
+
+    Environment variables (optional):
+        CLIP_SCORE_NUM_FRAMES: Frames sampled per video (default 8).
+    """
+    import os
+
+    from flow_grpo.clip_scorer import ClipScorer
+
+    num_frames = int(os.environ.get("CLIP_SCORE_NUM_FRAMES", 8))
+    print(f"[clip_video_score] frames={num_frames}")
+
+    scorer = ClipScorer(device=device)
+
+    @torch.no_grad()
+    def _fn(images, prompts, metadata):
+        if isinstance(images, torch.Tensor):
+            if images.dim() == 5 and images.shape[2] == 3:
+                images = images.permute(0, 1, 3, 4, 2)
+            images = (images * 255).round().clamp(0, 255).to(torch.uint8).cpu().numpy()
+
+        scores = []
+        for i in range(len(images)):
+            frames = list(images[i])
+            if len(frames) == 0:
+                # Keep training robust if a sample unexpectedly has no frames.
+                scores.append(0.0)
+                continue
+            sample_at = np.linspace(0, len(frames) - 1, min(num_frames, len(frames)))
+            batch = np.stack([np.asarray(frames[j]) for j in sample_at.round().astype(int)])
+            batch = torch.from_numpy(batch).permute(0, 3, 1, 2).float() / 255.0
+            scores.append(scorer(batch, [prompts[i]] * len(batch)).mean().item())
+        return scores, {}
+
+    return _fn
+
+
+_VIDEOSCORE2_CACHE = {}
+
+
+def videoscore2_score(device):
+    """VideoScore2 reward: the model's overall score for a clip, rescaled to 0-1.
+
+    Wraps TIGER-Lab/VideoScore2 (a Qwen2.5-VL-7B fine-tune). The model emits a
+    chain-of-thought followed by three 1-5 integer scores for visual quality, text-to-video
+    alignment and physical/common-sense consistency; following the official `vs2_inference.py`,
+    each is softened by the model's normalized probability over the score tokens 1-5.
+
+    The model does not emit a fourth "overall" score. The official eval code derives one by
+    equal-weighted aggregation of the three dimensions -- `(v+t+p)/3` in `get_pairwise_acc.py`
+    and `get_acc_corr.py` -- which is what the default VIDEOSCORE2_WEIGHTS of 1,1,1 reproduces.
+    Dividing that by 5 puts the reward in 0-1.
+
+    This scores each clip on its own, so unlike the vps/clip rewards it needs no reference
+    videos and no WAN_REF_VIDEO_DIR.
+
+    Environment variables (all optional):
+        VIDEOSCORE2_MODEL: Model id or local path (default TIGER-Lab/VideoScore2).
+        VIDEOSCORE2_DEVICE: Override placement, e.g. "cpu" to keep the training GPU free.
+        VIDEOSCORE2_DTYPE: bfloat16 (default), float16 or float32.
+        VIDEOSCORE2_FPS: Frame rate fed to the vision tower (default 2.0).
+        VIDEOSCORE2_MAX_PIXELS: Per-frame pixel budget (default 200704, i.e. 448x448).
+        VIDEOSCORE2_MAX_NEW_TOKENS: Generation budget for the rationale (default 1024).
+        VIDEOSCORE2_TEMPERATURE: Sampling temperature (default 0.7, matching the official
+            script). Note this makes the reward stochastic: rescoring one clip has ~0.08 std,
+            which enters the GRPO group advantages as noise. Set 0 for deterministic greedy.
+        VIDEOSCORE2_WEIGHTS: Comma-separated visual,alignment,physical weights. Defaults to
+            1,1,1, the equal weighting the official eval code uses for its overall score.
+        VIDEOSCORE2_DEBUG: Set to 1 to print the model's raw rationale for every clip.
+    """
+    import os
+    import re
+    import tempfile
+    from string import Template
+
+    import imageio
+    from transformers import AutoModelForVision2Seq, AutoProcessor, AutoTokenizer
+
+    # qwen_vl_utils prefers torchcodec, whose shared library is broken against torch 2.6 here.
+    # It recovers by falling back to torchvision, but only after re-raising the load error for
+    # *every* clip. Pin the working backend up front instead (must precede the import, which
+    # reads the variable at module scope).
+    if not os.environ.get("FORCE_QWENVL_VIDEO_READER"):
+        try:
+            import torchcodec.decoders  # noqa: F401
+        except Exception:
+            os.environ["FORCE_QWENVL_VIDEO_READER"] = "torchvision"
+    from qwen_vl_utils import process_vision_info
+
+    _VS2_QUERY_TEMPLATE = Template("""
+    You are an expert for evaluating AI-generated videos from three dimensions:
+    (1) visual quality – clarity, smoothness, artifacts;
+    (2) text-to-video alignment – fidelity to the prompt;
+    (3) physical/common-sense consistency – naturalness and physics plausibility.
+
+    Video prompt: $t2v_prompt
+
+    Please output in this format:
+    visual quality: <v_score>; 
+    text-to-video alignment: <t_score>, 
+    physical/common-sense consistency: <p_score>
+    """)
+    # The model answers either in the terse requested form ("visual quality: 4") or by echoing
+    # the dimension's description first ("(1) visual quality - clarity, ...: 4"), so allow any
+    # same-line filler between a dimension name and its digit. Staying on one line and stopping
+    # at the first digit keeps each pattern anchored to its own dimension.
+    _DIMENSIONS = ("visual quality", "text-to-video alignment",
+                   "physical/common-sense consistency")
+    _DIM_RES = tuple(re.compile(re.escape(name) + r"[^\n\d]*?(\d)", re.IGNORECASE)
+                     for name in _DIMENSIONS)
+    _THINK_END = "</think>"
+    _MAX_SCORE = 5
+    # Match the rate reference clips are written at, so playback speed matches training videos.
+    _MP4_FPS = 8
+
+    model_name = os.environ.get("VIDEOSCORE2_MODEL", "TIGER-Lab/VideoScore2")
+    dtype = getattr(torch, os.environ.get("VIDEOSCORE2_DTYPE", "bfloat16"))
+    vs2_device = torch.device(os.environ.get("VIDEOSCORE2_DEVICE") or device)
+    infer_fps = float(os.environ.get("VIDEOSCORE2_FPS", 2.0))
+    max_pixels = int(os.environ.get("VIDEOSCORE2_MAX_PIXELS", 448 * 448))
+    max_new_tokens = int(os.environ.get("VIDEOSCORE2_MAX_NEW_TOKENS", 1024))
+    temperature = float(os.environ.get("VIDEOSCORE2_TEMPERATURE", 0.7))
+    debug = os.environ.get("VIDEOSCORE2_DEBUG", "") not in ("", "0")
+    weights = [float(w) for w in os.environ.get("VIDEOSCORE2_WEIGHTS", "1,1,1").split(",")]
+    if len(weights) != 3 or sum(weights) <= 0:
+        raise ValueError(f"VIDEOSCORE2_WEIGHTS must be 3 positive-summing floats, got {weights!r}")
+
+    print(f"[videoscore2] loading {model_name} on {vs2_device} ({dtype}), fps={infer_fps}, "
+          f"max_pixels={max_pixels}, max_new_tokens={max_new_tokens}, temperature={temperature}, "
+          f"weights={weights}")
+
+    # train_wan2_1.py builds a separate multi_score for training and eval, which would otherwise
+    # put two 15.5 GiB copies of this 7B scorer on the same GPU as the Wan training run.
+    cache_key = (model_name, str(vs2_device), str(dtype))
+    if cache_key in _VIDEOSCORE2_CACHE:
+        print(f"[videoscore2] reusing already-loaded {model_name} on {vs2_device}")
+        model, processor, tokenizer = _VIDEOSCORE2_CACHE[cache_key]
+    else:
+        model = AutoModelForVision2Seq.from_pretrained(
+            model_name, trust_remote_code=True, torch_dtype=dtype
+        ).to(vs2_device).eval()
+        processor = AutoProcessor.from_pretrained(model_name, trust_remote_code=True)
+        tokenizer = getattr(processor, "tokenizer", None) or AutoTokenizer.from_pretrained(
+            model_name, trust_remote_code=True, use_fast=False
+        )
+        _VIDEOSCORE2_CACHE[cache_key] = (model, processor, tokenizer)
+
+    # Token ids for "1".."5"; the soft score is a probability-weighted version of the hard one.
+    score_token_ids = {}
+    for s in range(1, _MAX_SCORE + 1):
+        ids = tokenizer.encode(str(s), add_special_tokens=False)
+        if len(ids) == 1:
+            score_token_ids[s] = ids[0]
+    if not score_token_ids:
+        raise ValueError("Tokenizer does not encode digits 1-5 as single tokens; "
+                         "VideoScore2 soft scoring cannot work with this checkpoint.")
+
+    def _soft_score(hard_val, token_idx, scores):
+        """Rescale a 1-5 score by how confident the model was at that token position."""
+        if hard_val is None or token_idx < 0:
+            return None
+        logprobs = torch.log_softmax(scores[token_idx][0].float(), dim=-1)
+        probs = {s: float(logprobs[tid].exp()) for s, tid in score_token_ids.items()}
+        total = sum(probs.values())
+        if total <= 0:
+            return None
+        best = max(probs, key=probs.get)
+        return best * (probs[best] / total)
+
+    def _find_scores(gen_str):
+        """Locate each dimension's score digit as (char offset, value), or None per dimension."""
+        # The rationale restates the scores before the final answer, so search the answer block
+        # first and take the last hit within whichever block is used.
+        think_end = gen_str.rfind(_THINK_END)
+        starts = ([think_end + len(_THINK_END)] if think_end >= 0 else []) + [0]
+        for start in starts:
+            found = []
+            for regex in _DIM_RES:
+                last = None
+                for last in regex.finditer(gen_str, start):
+                    pass
+                found.append(last)
+            if all(m is not None for m in found):
+                return [(m.start(1), int(m.group(1))) for m in found]
+        return [None] * len(_DIM_RES)
+
+    def _token_indices_at(gen_ids, char_offsets):
+        """Map char offsets in the decoded generation back to the tokens that produced them."""
+        pending = sorted((off, k) for k, off in enumerate(char_offsets) if off is not None)
+        indices = [-1] * len(char_offsets)
+        cursor = 0
+        for i in range(len(gen_ids)):
+            decoded_len = len(tokenizer.decode(gen_ids[:i + 1], skip_special_tokens=False))
+            while cursor < len(pending) and pending[cursor][0] < decoded_len:
+                indices[pending[cursor][1]] = i
+                cursor += 1
+            if cursor == len(pending):
+                break
+        return indices
+
+    @torch.no_grad()
+    def _score_video(video_path, prompt):
+        messages = [{"role": "user", "content": [
+            {"type": "video", "video": video_path, "fps": infer_fps, "max_pixels": max_pixels},
+            {"type": "text", "text": _VS2_QUERY_TEMPLATE.substitute(t2v_prompt=prompt)},
+        ]}]
+        text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        image_inputs, video_inputs = process_vision_info(messages)
+        inputs = processor(
+            text=[text], images=image_inputs, videos=video_inputs,
+            fps=infer_fps, padding=True, return_tensors="pt",
+        ).to(vs2_device)
+
+        gen_out = model.generate(
+            **inputs,
+            max_new_tokens=max_new_tokens,
+            output_scores=True,
+            return_dict_in_generate=True,
+            do_sample=temperature > 0,
+            temperature=temperature if temperature > 0 else None,
+        )
+        gen_ids = gen_out.sequences[0, inputs["input_ids"].shape[1]:].tolist()
+        # Offsets must index the same string the tokens decode to, so keep special tokens.
+        gen_str = tokenizer.decode(gen_ids, skip_special_tokens=False)
+
+        hits = _find_scores(gen_str)
+        token_indices = _token_indices_at(gen_ids, [h[0] if h else None for h in hits])
+        soft = [_soft_score(h[1] if h else None, idx, gen_out.scores)
+                for h, idx in zip(hits, token_indices)]
+
+        if debug or any(s is None for s in soft):
+            truncated = len(gen_ids) >= max_new_tokens
+            print(f"[videoscore2] {'unparseable' if any(s is None for s in soft) else 'raw'} "
+                  f"output ({len(gen_ids)} tokens"
+                  f"{', hit max_new_tokens' if truncated else ''}): "
+                  f"{tokenizer.decode(gen_ids, skip_special_tokens=True)!r}")
+        return soft
+
+    @torch.no_grad()
+    def _fn(images, prompts, metadata):
+        if isinstance(images, torch.Tensor):
+            if images.dim() == 5 and images.shape[2] == 3:
+                images = images.permute(0, 1, 3, 4, 2)
+            images = (images * 255).round().clamp(0, 255).to(torch.uint8).cpu().numpy()
+
+        scores, visual, alignment, physical = [], [], [], []
+        for i in range(len(images)):
+            frames = list(images[i])
+            soft = [None] * 3
+            if frames:
+                tmp_path = None
+                try:
+                    with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tf:
+                        tmp_path = tf.name
+                    imageio.mimsave(tmp_path, frames, fps=_MP4_FPS,
+                                    codec="libx264", format="FFMPEG")
+                    soft = _score_video(tmp_path, prompts[i])
+                except Exception as exc:
+                    print(f"[videoscore2] scoring fallback for sample {i}: {exc}")
+                finally:
+                    if tmp_path is not None:
+                        try:
+                            os.unlink(tmp_path)
+                        except OSError:
+                            pass
+            # A dimension the model failed to emit falls back to the neutral mid-score.
+            filled = [s if s is not None else _MAX_SCORE / 2 for s in soft]
+            visual.append(filled[0])
+            alignment.append(filled[1])
+            physical.append(filled[2])
+            weighted = sum(w * s for w, s in zip(weights, filled)) / sum(weights)
+            scores.append(weighted / _MAX_SCORE)
+        return scores, {
+            "videoscore2_visual": visual,
+            "videoscore2_alignment": alignment,
+            "videoscore2_physical": physical,
+        }
+
+    return _fn
+
+
 def preference_within_group_local(device):
     """Scores videos within a group against the first video as reference (in-process).
 
@@ -810,6 +1097,8 @@ def multi_score(device, score_dict):
         "preference_cached_refs": preference_cached_refs,
         "random": random_score,
         "clip_preference": clip_preference,
+        "clip_video": clip_video_score,
+        "videoscore2": videoscore2_score,
     }
     score_fns={}
     for score_name, weight in score_dict.items():
@@ -833,6 +1122,10 @@ def multi_score(device, score_dict):
                 scores, rewards = score_fns[score_name](images, ref_images)
             else:
                 scores, rewards = score_fns[score_name](images, prompts, metadata)
+            # Reward fns can return extra per-sample breakdowns (e.g. videoscore2's individual
+            # dimensions) alongside the score they are weighted on; surface them for logging.
+            if isinstance(rewards, dict):
+                score_details.update(rewards)
             score_details[score_name] = scores
             weighted_scores = [weight * score for score in scores]
             
