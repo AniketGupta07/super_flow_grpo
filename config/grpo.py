@@ -1028,8 +1028,8 @@ def preference_wan2_1():
     config.height = 240
     config.width = 416
     config.frames = 33
-    config.sample.train_batch_size = 8
-    config.sample.num_image_per_prompt = 8
+    config.sample.train_batch_size = 4   #8
+    config.sample.num_image_per_prompt = 4  #8
     config.sample.num_batches_per_epoch = 2
     config.sample.sample_time_per_prompt = 5
     config.sample.test_batch_size = 2

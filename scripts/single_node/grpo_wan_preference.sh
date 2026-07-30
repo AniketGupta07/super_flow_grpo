@@ -2,9 +2,12 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 NUM_TRAIN_GPUS="${NUM_TRAIN_GPUS:-1}"
 CONFIG="${CONFIG:-config/grpo.py:preference_wan2_1_test}"
 REWARD_FN="${REWARD_FN:-vps}"
+OUT_DIR="${OUT_DIR:-}"
+MAIN_PROCESS_PORT="${MAIN_PROCESS_PORT:-29501}"
 
 usage() {
     cat <<EOF
@@ -21,6 +24,8 @@ Options:
   -r, --reward-fn NAME  Reward function (env: REWARD_FN)
   -c, --config SPEC     Training config spec (env: CONFIG)
   -g, --gpus N          Number of training processes (env: NUM_TRAIN_GPUS)
+  -o, --out-dir DIR     Checkpoint output dir; saved as DIR/checkpoint-<step>/lora (env: OUT_DIR)
+  -p, --port N          accelerate main_process_port; use 0 to auto-pick a free port (env: MAIN_PROCESS_PORT, default 29501)
   -h, --help            Show this message
 
 Examples:
@@ -39,6 +44,10 @@ while [[ $# -gt 0 ]]; do
         --config=*) CONFIG="${1#*=}"; shift ;;
         -g|--gpus|--num-gpus) NUM_TRAIN_GPUS="${2:?--gpus needs a value}"; shift 2 ;;
         --gpus=*|--num-gpus=*) NUM_TRAIN_GPUS="${1#*=}"; shift ;;
+        -o|--out-dir|--out_dir) OUT_DIR="${2:?--out-dir needs a value}"; shift 2 ;;
+        --out-dir=*|--out_dir=*) OUT_DIR="${1#*=}"; shift ;;
+        -p|--port|--main-process-port|--main_process_port) MAIN_PROCESS_PORT="${2:?--port needs a value}"; shift 2 ;;
+        --port=*|--main-process-port=*|--main_process_port=*) MAIN_PROCESS_PORT="${1#*=}"; shift ;;
         -h|--help) usage; exit 0 ;;
         -*)
             echo "[grpo_wan_preference] Unknown option: $1" >&2
@@ -79,10 +88,23 @@ else
     echo "[grpo_wan_preference] Qwen vision embedder runs on CPU per process (Wan stays on GPU). For local test, NUM_TRAIN_GPUS=1 avoids loading multiple 7B copies in RAM."
 fi
 
+train_args=(--config "$CONFIG" --reward_fn "$REWARD_FN")
+if [[ -n "$OUT_DIR" ]]; then
+    echo "[grpo_wan_preference] Checkpoints -> $OUT_DIR/checkpoint-<step>/lora"
+    train_args+=(--out_dir "$OUT_DIR")
+fi
+
+# Make the in-repo flow_grpo package win over any editable/site-packages install that
+# points at a different checkout. `accelerate launch scripts/train_wan2_1.py` sets
+# sys.path[0] to scripts/ (not the repo root), so without this the import can resolve
+# to a stale editable install and use the wrong reward functions.
+export PYTHONPATH="$REPO_ROOT${PYTHONPATH:+:$PYTHONPATH}"
+
+echo "[grpo_wan_preference] accelerate main_process_port=$MAIN_PROCESS_PORT"
+echo "[grpo_wan_preference] PYTHONPATH prefixed with repo root: $REPO_ROOT"
 accelerate launch \
     --config_file "$SCRIPT_DIR/accelerate_configs/multi_gpu.yaml" \
     --num_processes="$NUM_TRAIN_GPUS" \
-    --main_process_port 29501 \
+    --main_process_port "$MAIN_PROCESS_PORT" \
     "$SCRIPT_DIR/train_wan2_1.py" \
-    --config "$CONFIG" \
-    --reward_fn "$REWARD_FN"
+    "${train_args[@]}"
