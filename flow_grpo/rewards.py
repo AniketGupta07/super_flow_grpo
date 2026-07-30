@@ -441,6 +441,63 @@ def preference_within_group_remote(device):
 
     return _fn
 
+def _resolve_vps_model_dir():
+    """Resolve the PairMLP checkpoint directory for VPS rewards.
+
+    Precedence:
+        1. VPS_P / VPS_PROB – select a model from the prob-sweep runs tree, e.g. VPS_P=0.5
+           -> <VPS_PROB_SWEEP_ROOT>/p0.5/models (default root
+           /simurgh2/projects/super_video/exps/prob_sweep/runs).
+        2. VPS_MODEL_DIR – explicit directory containing best.pth + config.json.
+
+    VPS_P wins when both are set, so a single switch can override a default
+    VPS_MODEL_DIR exported in the environment.
+    """
+    import os
+
+    _DEFAULT_SWEEP_ROOT = "/simurgh2/projects/super_video/exps/prob_sweep/runs"
+
+    vps_p = os.environ.get("VPS_P") or os.environ.get("VPS_PROB")
+    if vps_p:
+        raw = vps_p.strip()
+        if raw.lower().startswith("p"):
+            raw = raw[1:]
+        try:
+            # Canonicalize so 0.50 / .5 / 0.5 all map to the same directory name.
+            tag = f"p{float(raw):g}"
+        except ValueError as exc:
+            raise ValueError(
+                f"VPS_P={vps_p!r} is not a number. Expected e.g. 0.5 or p0.5."
+            ) from exc
+        sweep_root = os.environ.get("VPS_PROB_SWEEP_ROOT", _DEFAULT_SWEEP_ROOT)
+        model_dir = os.path.join(sweep_root, tag, "models")
+        if not (os.path.isfile(os.path.join(model_dir, "best.pth"))
+                and os.path.isfile(os.path.join(model_dir, "config.json"))):
+            available = []
+            if os.path.isdir(sweep_root):
+                available = sorted(
+                    d for d in os.listdir(sweep_root)
+                    if d.startswith("p") and os.path.isdir(os.path.join(sweep_root, d, "models"))
+                )
+            raise ValueError(
+                f"No VPS PairMLP checkpoint for VPS_P={vps_p!r} at {model_dir}. "
+                f"Available: {available or '(none found under ' + sweep_root + ')'}"
+            )
+        return model_dir
+
+    vps_model_dir = os.environ.get("VPS_MODEL_DIR")
+    if vps_model_dir:
+        return vps_model_dir
+
+    raise ValueError(
+        "Neither VPS_P nor VPS_MODEL_DIR is set. "
+        "Set VPS_P to a prob-sweep value (e.g. 0.5 -> "
+        f"{_DEFAULT_SWEEP_ROOT}/p0.5/models) or VPS_MODEL_DIR to a directory "
+        "containing best.pth and config.json "
+        "(download from huggingface.co/datasets/supervideoVPS/super_video VPS_models/both)."
+    )
+
+
 def preference_cached_refs(device):
     """Score generated videos against pre-computed base-model reference embeddings.
 
@@ -449,13 +506,18 @@ def preference_cached_refs(device):
     MP4 (same fps as reference generation) and embedded with QwenVideoEmbedderA1
     .embed_video_only, matching VPS_reward/embed_wan_ref_grpo_videos.py.
 
-    Environment variables (all required):
-        VPS_DATA_ROOT: Root directory containing embeddings and prompts
+    Environment variables:
+        VPS_DATA_ROOT (required): Root directory containing embeddings and prompts
             - <VPS_DATA_ROOT>/extended_prompts.txt
             - <VPS_DATA_ROOT>/SBERT_PROMPT_EMBEDDINGS.json
             - <VPS_DATA_ROOT>/video_encodings/wan_ref_vision_embeddings*.json
-        VPS_MODEL_DIR: Directory containing PairMLP model (best.pth, config.json)
-            Download from: huggingface.co/datasets/supervideoVPS/super_video (VPS_models/both)
+        VPS_P / VPS_PROB (optional): Select a PairMLP from the prob-sweep runs tree,
+            e.g. 0.5 -> <VPS_PROB_SWEEP_ROOT>/p0.5/models. Wins over VPS_MODEL_DIR.
+        VPS_MODEL_DIR (optional if VPS_P set): Directory containing PairMLP model
+            (best.pth, config.json). Download from
+            huggingface.co/datasets/supervideoVPS/super_video (VPS_models/both).
+        VPS_PROB_SWEEP_ROOT (optional): Override for the sweeps root
+            (default /simurgh2/projects/super_video/exps/prob_sweep/runs).
     """
     import sys, os, json, tempfile
 
@@ -473,19 +535,13 @@ def preference_cached_refs(device):
 
     # Load paths from environment variables
     vps_data_root = os.environ.get("VPS_DATA_ROOT")
-    vps_model_dir = os.environ.get("VPS_MODEL_DIR")
+    vps_model_dir = _resolve_vps_model_dir()
 
     if not vps_data_root:
         raise ValueError(
             "VPS_DATA_ROOT environment variable not set. "
             "Set it to the directory containing extended_prompts.txt, "
             "SBERT_PROMPT_EMBEDDINGS.json, and video_encodings/"
-        )
-    if not vps_model_dir:
-        raise ValueError(
-            "VPS_MODEL_DIR environment variable not set. "
-            "Set it to the directory containing best.pth and config.json "
-            "(download from huggingface.co/datasets/supervideoVPS/super_video VPS_models/both)"
         )
 
     emb_dir = os.path.join(vps_data_root, "video_encodings")
@@ -514,6 +570,9 @@ def preference_cached_refs(device):
     print(f"[preference_cached_refs] {len(prompt_embs)} prompt embs, "
           f"{len(ref_vision_embs)} ref vision embs, "
           f"{len(prompt_to_idx)} prompt->idx mappings")
+    print(f"[preference_cached_refs] PairMLP from {vps_model_dir}"
+          + (f" (VPS_P={os.environ.get('VPS_P') or os.environ.get('VPS_PROB')})"
+             if (os.environ.get("VPS_P") or os.environ.get("VPS_PROB")) else ""))
 
     with open(os.path.join(vps_model_dir, "config.json")) as f:
         cfg = json.load(f)
@@ -1018,7 +1077,9 @@ def preference_within_group_local(device):
     Qwen2.5-VL-7B runs on CPU so it does not contend with the Wan pipeline on the
     training GPU. Only the small PairMLP and a single feature vector batch use GPU.
 
-    Environment variable (required):
+    Environment variables (one of VPS_P / VPS_MODEL_DIR required):
+        VPS_P / VPS_PROB: Select a PairMLP from the prob-sweep runs tree (see
+            `_resolve_vps_model_dir`). Wins over VPS_MODEL_DIR.
         VPS_MODEL_DIR: Directory containing PairMLP model (best.pth, config.json)
             Download from: huggingface.co/datasets/supervideoVPS/super_video (VPS_models/both)
     """
@@ -1034,13 +1095,8 @@ def preference_within_group_local(device):
     from prompt_encoder import SbertPromptEmbedder
     from train_prompt_pair_mlp import PairMLP
 
-    vps_model_dir = os.environ.get("VPS_MODEL_DIR")
-    if not vps_model_dir:
-        raise ValueError(
-            "VPS_MODEL_DIR environment variable not set. "
-            "Set it to the directory containing best.pth and config.json "
-            "(download from huggingface.co/datasets/supervideoVPS/super_video VPS_models/both)"
-        )
+    vps_model_dir = _resolve_vps_model_dir()
+    print(f"[preference_within_group_local] PairMLP from {vps_model_dir}")
 
     with open(os.path.join(vps_model_dir, "config.json")) as f:
         cfg = json.load(f)

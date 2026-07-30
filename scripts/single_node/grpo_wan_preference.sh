@@ -8,6 +8,8 @@ CONFIG="${CONFIG:-config/grpo.py:preference_wan2_1_test}"
 REWARD_FN="${REWARD_FN:-vps}"
 OUT_DIR="${OUT_DIR:-}"
 MAIN_PROCESS_PORT="${MAIN_PROCESS_PORT:-29501}"
+VPS_P="${VPS_P:-${VPS_PROB:-}}"
+VPS_PROB_SWEEP_ROOT="${VPS_PROB_SWEEP_ROOT:-/simurgh2/projects/super_video/exps/prob_sweep/runs}"
 
 usage() {
     cat <<EOF
@@ -26,12 +28,16 @@ Options:
   -g, --gpus N          Number of training processes (env: NUM_TRAIN_GPUS)
   -o, --out-dir DIR     Checkpoint output dir; saved as DIR/checkpoint-<step>/lora (env: OUT_DIR)
   -p, --port N          accelerate main_process_port; use 0 to auto-pick a free port (env: MAIN_PROCESS_PORT, default 29501)
+      --vps-p VALUE     For reward_fn=vps: use PairMLP trained at social_win_prob=VALUE
+                        from \$VPS_PROB_SWEEP_ROOT/pVALUE/models (env: VPS_P).
+                        Examples: 0.5, 0.85, p0.5. Overrides VPS_MODEL_DIR.
   -h, --help            Show this message
 
 Examples:
   $(basename "$0") clip
   $(basename "$0") random --gpus 4
   $(basename "$0") vps -c config/grpo.py:preference_wan2_1
+  $(basename "$0") vps --vps-p 0.5
 EOF
 }
 
@@ -48,6 +54,8 @@ while [[ $# -gt 0 ]]; do
         --out-dir=*|--out_dir=*) OUT_DIR="${1#*=}"; shift ;;
         -p|--port|--main-process-port|--main_process_port) MAIN_PROCESS_PORT="${2:?--port needs a value}"; shift 2 ;;
         --port=*|--main-process-port=*|--main_process_port=*) MAIN_PROCESS_PORT="${1#*=}"; shift ;;
+        --vps-p|--vps_p|--vps-prob|--vps_prob) VPS_P="${2:?--vps-p needs a value}"; shift 2 ;;
+        --vps-p=*|--vps_p=*|--vps-prob=*|--vps_prob=*) VPS_P="${1#*=}"; shift ;;
         -h|--help) usage; exit 0 ;;
         -*)
             echo "[grpo_wan_preference] Unknown option: $1" >&2
@@ -79,6 +87,30 @@ esac
 if [[ "$REWARD_FN" == "clip" && -z "${WAN_REF_VIDEO_DIR:-}" ]]; then
     echo "[grpo_wan_preference] reward_fn=clip requires WAN_REF_VIDEO_DIR pointing at the ref_XXXXXXX.mp4 reference videos." >&2
     exit 1
+fi
+
+if [[ -n "$VPS_P" ]]; then
+    if [[ "$REWARD_FN" != "vps" ]]; then
+        echo "[grpo_wan_preference] --vps-p / VPS_P only applies to reward_fn=vps (got '$REWARD_FN')." >&2
+        exit 1
+    fi
+    # Strip optional leading "p" and canonicalize via python so 0.50 -> p0.5.
+    _vps_tag="$(python3 -c 'import sys; v=sys.argv[1].strip(); v=v[1:] if v[:1] in "pP" else v; print(f"p{float(v):g}")' "$VPS_P")" || {
+        echo "[grpo_wan_preference] Invalid --vps-p='$VPS_P'. Expected e.g. 0.5 or p0.5." >&2
+        exit 1
+    }
+    _vps_model_dir="${VPS_PROB_SWEEP_ROOT}/${_vps_tag}/models"
+    if [[ ! -f "${_vps_model_dir}/best.pth" || ! -f "${_vps_model_dir}/config.json" ]]; then
+        echo "[grpo_wan_preference] No PairMLP for VPS_P=$VPS_P at ${_vps_model_dir}." >&2
+        echo "[grpo_wan_preference] Available:" >&2
+        for _d in "${VPS_PROB_SWEEP_ROOT}"/p*/models; do
+            [[ -d "$_d" ]] && echo "  $(basename "$(dirname "$_d")")" >&2
+        done
+        exit 1
+    fi
+    export VPS_P="$VPS_P"
+    export VPS_PROB_SWEEP_ROOT
+    echo "[grpo_wan_preference] VPS_P=$VPS_P -> PairMLP ${_vps_model_dir}"
 fi
 
 echo "[grpo_wan_preference] Launching training with $NUM_TRAIN_GPUS GPUs (config=$CONFIG, reward_fn=$REWARD_FN) ..."
