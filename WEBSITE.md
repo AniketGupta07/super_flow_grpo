@@ -21,19 +21,18 @@ python -m http.server 8000
 4. The site publishes at `https://<user>.github.io/<repo>/`.
 
 ## Links (current state)
+- **Paper** → `assets/paper/vps_paper.pdf` (NeurIPS 2026 E&D camera-ready) ✅
 - **Code** → https://anonymous.4open.science/r/super_flow_grpo/ ✅
 - **Model** → Hugging Face `best.pth` ✅
 - **Dataset** → Hugging Face `supervideoVPS/super_video` ✅
 - **arXiv** → disabled placeholder (search `TODO` in `index.html`): set its `href` and
   remove `aria-disabled="true"` when available.
 
-No Paper button and no venue/anonymity wording are shown, to stay clear of review guidelines.
-The compiled PDF is intentionally **not** hosted.
+The paper is accepted to the NeurIPS 2026 Track on Evaluations and Datasets; the hero shows the
+venue, the full author list and Stanford affiliations, and the BibTeX cites the NeurIPS version.
 
-## Remaining TODO before publishing
-- **Authors / affiliations** — currently `Anonymous Authors`. De-anonymize when allowed.
-- **arXiv** button (see above).
-- **BibTeX** — replace the placeholder citation in `index.html` once the arXiv preprint exists.
+## Remaining TODO
+- **arXiv** button (see above), and optionally add an `eprint` field to the BibTeX.
 
 ## Media
 - `assets/videos/baseline/` and `assets/videos/finetuned/` hold the WAN-2.1 before/after clips
