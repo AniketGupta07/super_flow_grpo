@@ -22,7 +22,7 @@ python -m http.server 8000
 
 ## Links (current state)
 - **Paper** → `assets/paper/vps_paper.pdf` (NeurIPS 2026 E&D camera-ready) ✅
-- **Code** → https://anonymous.4open.science/r/super_flow_grpo/ ✅
+- **Code** → https://github.com/AniketGupta07/super_flow_grpo ✅
 - **Model** → Hugging Face `best.pth` ✅
 - **Dataset** → Hugging Face `supervideoVPS/super_video` ✅
 - **arXiv** → disabled placeholder (search `TODO` in `index.html`): set its `href` and
